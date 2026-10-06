@@ -1,3 +1,29 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+  }
+  /* Visible keyboard focus on real interactive elements — accessibility
+     floor, not optional. Deliberately scoped to actual controls rather than
+     a blanket [tabindex] selector: recharts (SkillRadar) adds tabIndex to
+     internal, purely-decorative SVG groups for its own reasons, and a
+     blanket rule drew a stray outline box at the radar chart's center. */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid theme('colors.accent.DEFAULT');
+    outline-offset: 2px;
+  }
+
+  /* Belt-and-suspenders: recharts' internal SVG elements are not meant to
+     be focus targets at all for a read-only chart like this one. */
+  .recharts-wrapper *:focus,
+  .recharts-wrapper *:focus-visible {
+    outline: none;
+  }
+}

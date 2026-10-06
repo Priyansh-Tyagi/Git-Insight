@@ -173,7 +173,13 @@ async function runRepo(repo: typeof ALL_REPOS[0]): Promise<RepoExperimentResult>
       groundedSummary, naiveSummary, structuredSummary,
     };
   } catch (err: any) {
-    const msg = err?.response?.status ? `HTTP ${err.response.status}` : err.message;
+    const status = err?.response?.status;
+    const msg =
+      status === 401
+        ? 'HTTP 401 — GitHub rejected EVAL_GITHUB_TOKEN (bad/expired/malformed, not missing — a missing token just goes unauthenticated). Check .env for stray whitespace/quotes, or regenerate the token at github.com/settings/tokens. You can also temporarily comment it out — this script only needs ~14 unauthenticated calls, well under the 60/hr limit.'
+        : status
+        ? `HTTP ${status}`
+        : err.message;
     console.error(`  ${repo.fullName}: FAILED — ${msg}`);
     return {
       fullName: repo.fullName, group: repo.group, totalScore: -1,
@@ -253,11 +259,84 @@ async function main() {
     }
   }
 
+  // Full audit list, not just the first repo's example: C is the condition
+  // that ships in the product, so every flagged note across every repo is
+  // worth seeing before trusting the 7.8%-style mean rate as "real model
+  // error" rather than one more checker gap (see PHASE_LOG.md — several of
+  // the earlier apparent contradictions here turned out to be the checker's
+  // fault, not the model's, once actually read).
+  const allStructuredContradictions = ok.flatMap((r) =>
+    r.structuredGrounding.claims.filter((c) => c.contradicted).map((c) => ({ repo: r.fullName, ...c }))
+  );
+  report += `## Condition C — Full Contradiction Audit (${allStructuredContradictions.length} flagged across ${ok.length} repos)\n\n`;
+  report += `Every note the structured checker flagged, in full — read each before citing this rate as model hallucination; some may be checker false positives rather than genuine model errors (see groundingChecker.ts's documented history of this exact failure mode).\n\n`;
+  if (allStructuredContradictions.length === 0) {
+    report += `None — every structured note agreed with its own signal's computed status.\n\n`;
+  } else {
+    report += `| Repo | Signal | Note | Actual status |\n|---|---|---|---|\n`;
+    for (const c of allStructuredContradictions) {
+      report += `| ${c.repo} | ${c.signalId} | "${c.sentence}" | ${c.actualPassed ? 'PASSED' : 'FAILED'} |\n`;
+    }
+    report += `\n`;
+  }
+
+  // Same treatment for A and B — these use the free-text checker, which
+  // has had FIVE separate real false-positive bugs found and fixed over
+  // this project (see PHASE_LOG.md). There is no reason to assume the
+  // version in this run is now bug-free just because this round's new bugs
+  // haven't been found yet. B outscoring A's raw rate across two
+  // consecutive runs is NOT safe to read as "grounding made things worse"
+  // without reading what was actually flagged — do that before citing it.
+  const allNaiveContradictions = ok.flatMap((r) =>
+    r.naiveGrounding.claims.filter((c) => c.contradicted).map((c) => ({ repo: r.fullName, ...c }))
+  );
+  const allGroundedContradictions = ok.flatMap((r) =>
+    r.groundedGrounding.claims.filter((c) => c.contradicted).map((c) => ({ repo: r.fullName, ...c }))
+  );
+  report += `## Condition A — Full Contradiction Audit (${allNaiveContradictions.length} flagged across ${ok.length} repos)\n\n`;
+  if (allNaiveContradictions.length === 0) {
+    report += `None flagged.\n\n`;
+  } else {
+    report += `| Repo | Signal | Sentence | Actual status |\n|---|---|---|---|\n`;
+    for (const c of allNaiveContradictions) {
+      report += `| ${c.repo} | ${c.signalId} | "${c.sentence}" | ${c.actualPassed ? 'PASSED' : 'FAILED'} |\n`;
+    }
+    report += `\n`;
+  }
+
+  report += `## Condition B — Full Contradiction Audit (${allGroundedContradictions.length} flagged across ${ok.length} repos)\n\n`;
+  if (allGroundedContradictions.length === 0) {
+    report += `None flagged.\n\n`;
+  } else {
+    report += `| Repo | Signal | Sentence | Actual status |\n|---|---|---|---|\n`;
+    for (const c of allGroundedContradictions) {
+      report += `| ${c.repo} | ${c.signalId} | "${c.sentence}" | ${c.actualPassed ? 'PASSED' : 'FAILED'} |\n`;
+    }
+    report += `\n`;
+  }
+
+  // Surfaces the coverage confound directly rather than leaving it only in
+  // prose: A systematically produces fewer checkable claims than B (naive
+  // prose rarely mentions the specific rubric vocabulary the checker scans
+  // for), so a raw contradiction RATE comparison between A and B is
+  // comparing different sample sizes per repo, not just different error
+  // rates. A repo contributing 1 checkable claim and a repo contributing 9
+  // carry equal weight in a mean-of-rates — not equal evidence.
+  const totalNaiveClaims = ok.reduce((sum, r) => sum + r.naiveGrounding.totalClaims, 0);
+  const totalGroundedClaims = ok.reduce((sum, r) => sum + r.groundedGrounding.totalClaims, 0);
+  const totalStructuredClaims = ok.reduce((sum, r) => sum + r.structuredGrounding.totalClaims, 0);
+  report += `## Claims-Checked Coverage\n\n`;
+  report += `| Condition | Total checkable claims (all ${ok.length} repos) | Repos with zero checkable claims (NaN) |\n|---|---|---|\n`;
+  report += `| A: Naive | ${totalNaiveClaims} | ${ok.filter((r) => isNaN(r.naiveGrounding.contradictionRate)).length} |\n`;
+  report += `| B: Grounded-Prose | ${totalGroundedClaims} | ${ok.filter((r) => isNaN(r.groundedGrounding.contradictionRate)).length} |\n`;
+  report += `| C: Grounded-Structured | ${totalStructuredClaims} | ${ok.filter((r) => isNaN(r.structuredGrounding.contradictionRate)).length} |\n\n`;
+  report += `A mean-of-rates across repos with very different claim counts (including some with none at all) is a weaker comparison than it looks — a per-repo 50% rate from 1-of-2 claims and a 50% rate from 4-of-8 claims are not equally meaningful, and both get equal weight in the "Mean Contradiction Rate" row above.\n\n`;
+
   report += `## Limitations\n\n`;
   report += `- Small dataset (${ok.length} repos) — expand to 15-20 before paper-ready conclusions.\n`;
   report += `- Conditions A/B's checker only detects contradictions about the 11 rubric signals — it cannot detect fabricated general claims (e.g. "this project uses microservices architecture" when no such signal exists in the rubric). Condition C has the same limit, scoped per-signal instead.\n`;
-  report += `- Rate of NaN (no checkable claims) would indicate the LLM made no claims the checker could verify either way — itself informative, but it reduces the number of checkable outputs for that repo.\n`;
-  report += `- The A/B free-text checker uses a fixed-width proximity window as a heuristic for "which clause is this negation about" — empirically, the safe window width for real LLM output observed in this project was only about 13 characters wide (76-89 chars) between two real, conflicting test cases. This is not a tunable-away limitation; it is evidence that free-text grounding verification has a hard reliability ceiling, which is the motivation for Condition C.\n`;
+  report += `- A's lower raw rate is confounded with coverage, not just accuracy — see "Claims-Checked Coverage" above. A naive summary that rarely mentions the rubric's specific vocabulary produces fewer checkable claims, which mechanically produces fewer chances to be caught contradicting itself, independent of whether it's actually more or less accurate in what it does say.\n`;
+  report += `- The A/B free-text checker uses a fixed-width proximity window as a heuristic for "which clause is this negation about" — empirically, the safe window width for real LLM output observed in this project was only about 13 characters wide (76-89 chars) between two real, conflicting test cases. This is not a tunable-away limitation; it is evidence that free-text grounding verification has a hard reliability ceiling, which is the motivation for Condition C. Condition C's checker has no such heuristic (see groundingChecker.ts) and its audit above should be trusted far more than A/B's.\n`;
 
   console.log('\n' + report);
 

@@ -186,8 +186,8 @@ describe('checkStructuredSummary', () => {
       {
         headline: 'Nice score!',
         signalNotes: [
-          { signalId: 'tests', note: 'Great test coverage here.' },
-          { signalId: 'docker', note: 'No Docker support was found.' },
+          { signalId: 'tests', status: 'pass', note: 'Great test coverage here.' },
+          { signalId: 'docker', status: 'fail', note: 'No Docker support was found.' },
         ],
         closing: 'Keep it up!',
       },
@@ -197,10 +197,10 @@ describe('checkStructuredSummary', () => {
     expect(result.totalClaims).toBe(2);
   });
 
-  it('flags a contradiction when a note disagrees with its OWN signal, deterministically', () => {
+  it('flags a contradiction when the echoed status disagrees with the OWN signal, deterministically', () => {
     const breakdown = [signal('docker', false)];
     const result = checkStructuredSummary(
-      { headline: 'Hi', signalNotes: [{ signalId: 'docker', note: 'Docker support is nicely configured.' }], closing: 'Bye' },
+      { headline: 'Hi', signalNotes: [{ signalId: 'docker', status: 'pass', note: 'Docker support is nicely configured.' }], closing: 'Bye' },
       breakdown
     );
     expect(result.contradictionCount).toBe(1);
@@ -210,7 +210,7 @@ describe('checkStructuredSummary', () => {
   it('ignores a signalId the model returned that is not in this repo\'s breakdown', () => {
     const breakdown = [signal('tests', true)];
     const result = checkStructuredSummary(
-      { headline: 'Hi', signalNotes: [{ signalId: 'not_a_real_signal', note: 'Something.' }], closing: 'Bye' },
+      { headline: 'Hi', signalNotes: [{ signalId: 'not_a_real_signal', status: 'pass', note: 'Something.' }], closing: 'Bye' },
       breakdown
     );
     expect(result.totalClaims).toBe(0);
@@ -218,8 +218,46 @@ describe('checkStructuredSummary', () => {
 
   it('is fully deterministic — same input always produces the same result', () => {
     const breakdown = [signal('tests', false)];
-    const input = { headline: 'Hi', signalNotes: [{ signalId: 'tests', note: 'a bit thin here' }], closing: 'Bye' };
+    const input = { headline: 'Hi', signalNotes: [{ signalId: 'tests', status: 'fail' as const, note: 'a bit thin here' }], closing: 'Bye' };
     const results = Array.from({ length: 10 }, () => JSON.stringify(checkStructuredSummary(input, breakdown)));
     expect(results.every((r) => r === results[0])).toBe(true);
+  });
+
+  // Regression tests for the real production bug this redesign fixes: a
+  // live run flagged 14 notes as contradictions, every one of them a
+  // correctly-described FAILED signal phrased gently/optimistically with
+  // no negation word at all. The enum-based design makes the note's
+  // WORDING irrelevant to the check entirely — these prove that directly.
+  it('does NOT flag gently-phrased FAILED notes that use no negation word at all (the real bug found in production)', () => {
+    const breakdown = [signal('activity', false), signal('size', false), signal('structure', false)];
+    const result = checkStructuredSummary(
+      {
+        headline: 'Hi',
+        signalNotes: [
+          { signalId: 'activity', status: 'fail', note: 'With 0 commits total recorded, you have a blank slate ready for more history.' },
+          { signalId: 'size', status: 'fail', note: 'At only 2 KB, there is plenty of room to grow this project.' },
+          { signalId: 'structure', status: 'fail', note: 'There are 30 files at your repo root, which you might tidy up over time.' },
+        ],
+        closing: 'Bye',
+      },
+      breakdown
+    );
+    expect(result.contradictionCount).toBe(0);
+  });
+
+  it('the note\'s wording is IRRELEVANT to the check — only the status field is compared', () => {
+    // A note that reads like a pass but is correctly labeled "fail" (matching
+    // the real signal) must NOT be flagged — proving wording no longer
+    // drives the verdict at all, only the echoed enum does.
+    const breakdown = [signal('tests', false)];
+    const result = checkStructuredSummary(
+      {
+        headline: 'Hi',
+        signalNotes: [{ signalId: 'tests', status: 'fail', note: 'Your tests are excellent and thorough, great coverage!' }],
+        closing: 'Bye',
+      },
+      breakdown
+    );
+    expect(result.contradictionCount).toBe(0); // status says fail, actual is fail — consistent, regardless of what the words say
   });
 });

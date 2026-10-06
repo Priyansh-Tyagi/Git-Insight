@@ -1,5 +1,5 @@
 import { SignalResult } from '../repoAnalysis/signals';
-import { SchemaType, Schema } from '@google/generative-ai';
+import { Type, Schema } from '@google/genai';
 import { StructuredSummary } from './groundingChecker';
 
 /**
@@ -33,39 +33,62 @@ Write the summary now.`;
 }
 
 /**
- * GROUNDED-STRUCTURED — the schema-constrained production path. Rather than
- * one paragraph where the model has to both decide what to say AND
- * implicitly convey pass/fail through word choice (the entire source of
- * every grounding bug found in this phase — see groundingChecker.ts), each
- * signal gets its own explicit true/false status stated in the PROMPT, and
- * the model's only job per signal is one short, appropriately-toned note.
- * It never has to invent whether something passed — it's told directly.
+ * GROUNDED-STRUCTURED — the schema-constrained production path.
+ *
+ * Earlier version of this schema had the model write a note and left
+ * verification to infer pass/fail from the note's WORDING (regex patterns
+ * over "no"/"lacks"/"consider adding"/etc. — see checkStructuredSummary's
+ * history below). That caught the wrong failure mode: the model was never
+ * confused about the status — it was TOLD directly — the problem was our
+ * own checker failing to recognize soft, encouraging phrasing like "you
+ * might tidy this up over time" or "0 commits... a blank slate" as meaning
+ * FAILED. A live run flagged 14 notes this way; all 14 were genuinely
+ * correct descriptions of a failing signal, just gently worded — 0 of them
+ * were real model errors. No finite keyword list closes that gap, because
+ * "implies absent" is an open-ended paraphrase space, not a fixed
+ * vocabulary (same lesson as the free-text checker's 13-char window proof).
+ *
+ * The fix: stop inferring the verdict from the note's prose at all. The
+ * schema now has the model ECHO the status as a constrained enum field,
+ * separate from the free-text note. Copying a label you were just handed
+ * is a far easier, far more reliable task for an LLM than generating prose
+ * whose implicit sentiment happens to match every pattern a regex expects.
+ * Verification becomes a direct string comparison — zero heuristics, zero
+ * vocabulary gaps. If the model DOES echo the wrong enum value despite
+ * being told the right one, that's a genuine, unambiguous error, not a
+ * guess about what its wording might have implied.
  */
 export const GROUNDED_SUMMARY_SCHEMA: Schema = {
-  type: SchemaType.OBJECT,
+  type: Type.OBJECT,
   properties: {
     headline: {
-      type: SchemaType.STRING,
+      type: Type.STRING,
       description: 'One warm, encouraging sentence mentioning the overall score out of 100. No other facts.',
     },
     signalNotes: {
-      type: SchemaType.ARRAY,
+      type: Type.ARRAY,
       description: 'Exactly one entry per signal listed in the prompt, in the same order.',
       items: {
-        type: SchemaType.OBJECT,
+        type: Type.OBJECT,
         properties: {
-          signalId: { type: SchemaType.STRING, description: 'Must exactly match one of the given signal ids.' },
+          signalId: { type: Type.STRING, description: 'Must exactly match one of the given signal ids.' },
+          status: {
+            type: Type.STRING,
+            format: 'enum',
+            enum: ['pass', 'fail'],
+            description: 'Copy EXACTLY the status you were given for this signal — "pass" if PASSED, "fail" if FAILED. Do not reinterpret it.',
+          },
           note: {
-            type: SchemaType.STRING,
+            type: Type.STRING,
             description:
               'ONE short, friendly sentence (max ~20 words) about this specific signal, matching the status you were given for it. No new facts beyond the label/detail provided.',
           },
         },
-        required: ['signalId', 'note'],
+        required: ['signalId', 'status', 'note'],
       },
     },
     closing: {
-      type: SchemaType.STRING,
+      type: Type.STRING,
       description: 'One brief encouraging closing sentence. No new factual claims about any signal.',
     },
   },
@@ -86,8 +109,10 @@ Overall score: ${totalScore}/100
 Signals (write exactly one note per signal, in this order):
 ${signalLines}
 
+For each signal, also copy its status into the "status" field exactly as given: "pass" for PASSED, "fail" for FAILED.
+
 For a PASSED signal: write a brief, genuine note of praise or acknowledgment.
-For a FAILED signal: write a brief, encouraging note that gently flags the gap and, where natural, a short suggestion — without being discouraging.
+For a FAILED signal: write a brief, encouraging note that gently flags the gap and, where natural, a short suggestion — without being discouraging. A gentle tone does not change its status: it is still "fail".
 
 Respond with JSON matching the given schema.`;
 }
@@ -101,7 +126,12 @@ export function isValidStructuredSummary(value: unknown): value is StructuredSum
     typeof v.closing === 'string' &&
     Array.isArray(v.signalNotes) &&
     v.signalNotes.every(
-      (n) => typeof n === 'object' && n !== null && typeof (n as any).signalId === 'string' && typeof (n as any).note === 'string'
+      (n) =>
+        typeof n === 'object' &&
+        n !== null &&
+        typeof (n as any).signalId === 'string' &&
+        typeof (n as any).note === 'string' &&
+        ((n as any).status === 'pass' || (n as any).status === 'fail')
     )
   );
 }

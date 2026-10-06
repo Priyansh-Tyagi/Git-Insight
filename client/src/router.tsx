@@ -6,7 +6,7 @@ import Dashboard from './pages/Dashboard';
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
 
-  if (loading) return <div className="min-h-screen bg-black text-green-400 font-mono p-8">loading...</div>;
+  if (loading) return <div className="min-h-screen bg-canvas text-ink-muted flex items-center justify-center text-sm">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
   return children;
 }

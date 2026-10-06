@@ -1,14 +1,39 @@
-import { GoogleGenerativeAI, GenerationConfig } from '@google/generative-ai';
+import { GoogleGenAI, GenerateContentConfig } from '@google/genai';
 import { env } from '../../config/env';
 
-let client: GoogleGenerativeAI | null = null;
+/**
+ * Google now issues API keys prefixed "AQ." instead of the old "AIzaSy..."
+ * format, but — confirmed via a real-world debugging report, not just
+ * assumed — that prefix is NOT a reliable signal for which auth surface
+ * the key belongs to: Google issues "AQ." keys for BOTH ordinary Developer
+ * API ("Gemini API"-restricted) keys AND genuine Vertex AI Express Mode
+ * keys. A key restricted to one surface gets rejected with 401
+ * ACCESS_TOKEN_TYPE_UNSUPPORTED on the other — the same error either way,
+ * so the symptom can't tell you which kind you have.
+ *
+ * So rather than guess from the prefix, each client mode is tried in
+ * order and cached once one works — same pattern as the model fallback
+ * chain above, for the same reason: don't hardcode an assumption about an
+ * external system that's visibly still in flux.
+ */
+const clients: Partial<Record<'standard' | 'vertex', GoogleGenAI>> = {};
 
-function getClient(): GoogleGenerativeAI {
-  if (!client) {
-    client = new GoogleGenerativeAI(env.geminiApiKey);
+function getClient(mode: 'standard' | 'vertex'): GoogleGenAI {
+  if (!clients[mode]) {
+    clients[mode] = new GoogleGenAI({ apiKey: env.geminiApiKey, vertexai: mode === 'vertex' });
   }
-  return client;
+  return clients[mode]!;
 }
+
+/** ACCESS_TOKEN_TYPE_UNSUPPORTED specifically — the key-surface-mismatch error, distinct from a genuinely bad/revoked key (plain 401 with a different reason, or no reason at all). */
+function isTokenTypeMismatch(err: any): boolean {
+  return String(err?.message ?? '').includes('ACCESS_TOKEN_TYPE_UNSUPPORTED');
+}
+
+// Remembers which client mode actually worked, so once we know, every
+// subsequent call in this process skips straight to it instead of
+// re-probing both modes every time.
+let cachedWorkingMode: 'standard' | 'vertex' | null = null;
 
 /**
  * Why a fallback CHAIN instead of one configured model:
@@ -53,8 +78,7 @@ function isModelUnavailableError(err: any): boolean {
  * Gemini returns a 503 ("model is overloaded, please try again later") when
  * the model is busy — this is distinct from a 429 (quota/rate-limit) error
  * and needs a different fix: retrying shortly after, not just spacing calls
- * out further. The SDK surfaces this as an error whose `status` is 503, or
- * whose message contains "overloaded" / "UNAVAILABLE" depending on version.
+ * out further.
  */
 function isOverloadedError(err: any): boolean {
   const status = err?.status ?? err?.response?.status ?? err?.code;
@@ -76,6 +100,14 @@ function isRateLimitError(err: any): boolean {
   return status === 429 || message.includes('quota') || message.includes('rate limit');
 }
 
+/** Any credential-related rejection — wrong auth surface for this key
+ *  (ACCESS_TOKEN_TYPE_UNSUPPORTED) or a genuinely bad/revoked key. Handled
+ *  by trying the other auth mode (see callGemini) before concluding which. */
+function isAuthError(err: any): boolean {
+  const status = err?.status ?? err?.response?.status ?? err?.code;
+  return status === 401 || status === 403;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -89,8 +121,8 @@ export interface CallGeminiOptions {
   maxDelayMs?: number;
   /** Force a single specific model for this call, skipping the fallback chain entirely. */
   model?: string;
-  /** Pass-through to Gemini's generationConfig — e.g. { responseMimeType: 'application/json', responseSchema } for schema-constrained structured output. See prompts.ts, GROUNDED_SUMMARY_SCHEMA. */
-  generationConfig?: GenerationConfig;
+  /** Pass-through to Gemini's generation config — e.g. { responseMimeType: 'application/json', responseSchema } for schema-constrained structured output. See prompts.ts, GROUNDED_SUMMARY_SCHEMA. */
+  generationConfig?: GenerateContentConfig;
 }
 
 // Remembers the first candidate that worked in this process, so subsequent
@@ -127,54 +159,92 @@ function buildCandidateList(forcedModel?: string): string[] {
 export async function callGemini(prompt: string, options: CallGeminiOptions = {}): Promise<string> {
   const { maxRetries = 3, baseDelayMs = 2000, maxDelayMs = 30000, model: modelOverride, generationConfig } = options;
   const candidates = buildCandidateList(modelOverride);
+  const modesToTry: Array<'standard' | 'vertex'> = cachedWorkingMode
+    ? [cachedWorkingMode, ...(['standard', 'vertex'] as const).filter((m) => m !== cachedWorkingMode)]
+    : ['standard', 'vertex'];
 
   const attemptsLog: string[] = [];
 
   for (const candidateModel of candidates) {
-    const model = getClient().getGenerativeModel({ model: candidateModel, generationConfig });
+    let modelExhausted = false;
+    let authFailuresOnThisModel = 0;
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const result = await model.generateContent(prompt);
-        if (cachedWorkingModel !== candidateModel) {
-          console.log(`  Gemini: using model "${candidateModel}"`);
-          cachedWorkingModel = candidateModel;
-        }
-        return result.response.text();
-      } catch (err: any) {
-        if (isModelUnavailableError(err)) {
-          attemptsLog.push(`${candidateModel}: unavailable/retired (404)`);
-          if (cachedWorkingModel === candidateModel) cachedWorkingModel = null;
-          break; // next candidate — no point retrying a dead model name
-        }
-
-        if (isRateLimitError(err)) {
-          attemptsLog.push(`${candidateModel}: quota exhausted (429)`);
-          if (cachedWorkingModel === candidateModel) cachedWorkingModel = null;
-          break; // next candidate — different model, separate quota bucket
-        }
-
-        if (isOverloadedError(err)) {
-          if (attempt < maxRetries) {
-            const backoff = Math.min(baseDelayMs * 2 ** attempt, maxDelayMs);
-            const delay = Math.round(backoff + Math.random() * backoff * 0.3); // up to 30% jitter
-            console.warn(`  Gemini: "${candidateModel}" overloaded (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`);
-            await sleep(delay);
-            continue;
+    for (const mode of modesToTry) {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const result = await getClient(mode).models.generateContent({
+            model: candidateModel,
+            contents: prompt,
+            config: generationConfig,
+          });
+          if (cachedWorkingModel !== candidateModel || cachedWorkingMode !== mode) {
+            console.log(`  Gemini: using model "${candidateModel}" via ${mode === 'vertex' ? 'Vertex AI Express mode' : 'standard Developer API'}`);
+            cachedWorkingModel = candidateModel;
+            cachedWorkingMode = mode;
           }
-          attemptsLog.push(`${candidateModel}: still overloaded after ${maxRetries + 1} attempts`);
-          break; // next candidate
-        }
+          return result.text ?? '';
+        } catch (err: any) {
+          if (isAuthError(err)) {
+            // Could be a genuine surface mismatch (this key only works in
+            // the OTHER mode) or a bad key — can't tell from one attempt,
+            // so record it and try the other mode before concluding anything.
+            authFailuresOnThisModel++;
+            attemptsLog.push(
+              `${candidateModel} via ${mode}: ${isTokenTypeMismatch(err) ? 'ACCESS_TOKEN_TYPE_UNSUPPORTED (wrong auth surface for this key)' : `auth error (${err?.status ?? 'unknown'})`}`
+            );
+            break; // try the next mode for this same model, not a retry of this one
+          }
 
-        // Unrecognized error (bad prompt, auth failure, etc.) — don't mask
-        // it by silently working through every candidate model.
-        throw err;
+          if (isModelUnavailableError(err)) {
+            attemptsLog.push(`${candidateModel}: unavailable/retired (404)`);
+            modelExhausted = true;
+            if (cachedWorkingModel === candidateModel) cachedWorkingModel = null;
+            break;
+          }
+
+          if (isRateLimitError(err)) {
+            attemptsLog.push(`${candidateModel}: quota exhausted (429)`);
+            modelExhausted = true;
+            if (cachedWorkingModel === candidateModel) cachedWorkingModel = null;
+            break;
+          }
+
+          if (isOverloadedError(err)) {
+            if (attempt < maxRetries) {
+              const backoff = Math.min(baseDelayMs * 2 ** attempt, maxDelayMs);
+              const delay = Math.round(backoff + Math.random() * backoff * 0.3); // up to 30% jitter
+              console.warn(`  Gemini: "${candidateModel}" overloaded (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`);
+              await sleep(delay);
+              continue;
+            }
+            attemptsLog.push(`${candidateModel} via ${mode}: still overloaded after ${maxRetries + 1} attempts`);
+            modelExhausted = true; // overload is a model property, not an auth-mode property — trying the other mode won't help
+            break;
+          }
+
+          // Unrecognized error (bad prompt, malformed schema, etc.) — don't mask
+          // it by silently working through every candidate model/mode.
+          throw err;
+        }
       }
+      if (modelExhausted) break;
+    }
+
+    if (authFailuresOnThisModel >= modesToTry.length) {
+      // Both auth surfaces rejected the SAME model — this isn't model-specific,
+      // so trying 3 more models would just repeat the same failure 3 more times.
+      throw new Error(
+        `Gemini rejected this API key on both auth surfaces it tried:\n  ${attemptsLog.join('\n  ')}\n\n` +
+          `This key isn't currently valid on either the standard Developer API or Vertex AI Express mode. ` +
+          `Regenerate a key at aistudio.google.com, or — if you intend to use Vertex AI Express specifically — ` +
+          `complete its explicit sign-up at console.cloud.google.com/vertex-ai ("Try Vertex AI Studio free") ` +
+          `and use the key generated during THAT signup; a key from ordinary AI Studio isn't automatically enrolled.`
+      );
     }
   }
 
   throw new Error(
     `All Gemini model candidates failed:\n  ${attemptsLog.join('\n  ')}\n` +
-      `Tried: ${candidates.join(', ')}. Set GEMINI_MODEL_CANDIDATES in .env to override.`
+      `Tried: ${candidates.join(', ')} across both auth modes. Set GEMINI_MODEL_CANDIDATES in .env to override models.`
   );
 }

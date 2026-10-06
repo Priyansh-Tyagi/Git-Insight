@@ -7,14 +7,20 @@ export default function AuthenticityBadge({ flag }: AuthenticityBadgeProps) {
 
   if (flag === 'possible_tutorial_clone') {
     return (
-      <span className="text-xs px-2 py-1 border border-yellow-600 text-yellow-500 rounded" title="Structurally similar to a common tutorial/starter template">
+      <span
+        className="text-[11px] px-2 py-0.5 rounded-full bg-warn/10 text-warn border border-warn/30"
+        title="Structurally similar to a common tutorial/starter template"
+      >
         possible template match
       </span>
     );
   }
 
   return (
-    <span className="text-xs px-2 py-1 border border-zinc-700 text-zinc-500 rounded" title="Not enough commit/file history to judge">
+    <span
+      className="text-[11px] px-2 py-0.5 rounded-full bg-surface-raised text-ink-faint border border-hairline"
+      title="Not enough commit/file history to judge"
+    >
       insufficient data
     </span>
   );

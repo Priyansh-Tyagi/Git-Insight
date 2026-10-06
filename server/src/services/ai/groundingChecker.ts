@@ -207,6 +207,8 @@ export function checkGrounding(llmText: string, breakdown: SignalResult[]): Grou
 
 export interface StructuredSignalNote {
   signalId: string;
+  /** The model's own echo of the status it was given — 'pass'/'fail' — not inferred from `note`'s wording. See checkStructuredSummary. */
+  status: 'pass' | 'fail';
   note: string;
 }
 
@@ -225,21 +227,30 @@ export interface StructuredGroundingResult {
 
 /**
  * Checks each per-signal note against the TRUE status of that exact signal
- * — no topic-detection needed, since signalId is already given. This is the
- * check actually used in production (see aiSummary.service.ts); the
- * free-text checkGrounding() above remains only for the NAIVE experiment
- * condition, which by design gets no structured signal data to work from.
+ * — no topic-detection needed (signalId is given), and NO prose-polarity
+ * inference either (status is a constrained enum the model echoes back,
+ * not something read out of the note's wording — see the long comment on
+ * GROUNDED_SUMMARY_SCHEMA in prompts.ts for why that change was made: the
+ * regex approach this replaced had a real, measured 0%-genuine/100%-false
+ * contradiction rate on one production run, entirely from soft/encouraging
+ * phrasing no finite keyword list could keep up with).
+ *
+ * This is the check actually used in production (see aiSummary.service.ts);
+ * the free-text checkGrounding() above remains only for the NAIVE
+ * experiment condition, which by design gets no structured signal data
+ * (and so has no status field to compare against) and must fall back to
+ * inferring everything from prose — the exact problem this function no
+ * longer has.
  */
 export function checkStructuredSummary(summary: StructuredSummary, breakdown: SignalResult[]): StructuredGroundingResult {
   const signalById = new Map(breakdown.map((s) => [s.id, s]));
   const claims: ClaimCheck[] = [];
 
-  for (const { signalId, note } of summary.signalNotes) {
+  for (const { signalId, status, note } of summary.signalNotes) {
     const signal = signalById.get(signalId);
     if (!signal) continue; // model referenced a signal outside this repo's breakdown — nothing to check against
 
-    const impliesAbsent = NEGATION_PATTERN.test(note) || SUGGESTION_PATTERN.test(note) || INADEQUACY_PATTERN.test(note);
-    const claimedPresent = !impliesAbsent;
+    const claimedPresent = status === 'pass';
     const contradicted = claimedPresent !== signal.passed;
 
     claims.push({ signalId, sentence: note, claimedPresent, actualPassed: signal.passed, contradicted });

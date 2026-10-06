@@ -51,57 +51,56 @@ export default function RepoCard({ repo, onAnalyze }: RepoCardProps) {
   const noteBySignal = new Map(aiSummary?.signalNotes.map((n) => [n.signalId, n.note]) ?? []);
 
   return (
-    <div className="border border-zinc-800 rounded-md p-4 bg-zinc-950">
+    <div className="rounded-lg border border-hairline hover:border-ink-faint/40 transition-colors bg-surface/40">
       <div
-        className="flex items-start justify-between cursor-pointer"
+        className="flex items-start justify-between gap-4 p-4 cursor-pointer"
         onClick={() => repo.score_breakdown && setExpanded((v) => !v)}
       >
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-green-400 font-bold">{repo.name}</h3>
-            <span className="text-xs text-zinc-600">★ {repo.stargazer_count}</span>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-ink font-medium truncate">{repo.name}</h3>
+            <span className="text-xs text-ink-faint shrink-0">★ {repo.stargazer_count}</span>
+            <AuthenticityBadge flag={repo.authenticity_flag} />
           </div>
-          {repo.description && <p className="text-sm text-zinc-500 mt-1">{repo.description}</p>}
+          {repo.description && <p className="text-sm text-ink-muted mt-1 line-clamp-2">{repo.description}</p>}
+          {repo.last_analyzed_at && (
+            <p className="text-[11px] text-ink-faint mt-1.5">
+              Last analyzed {new Date(repo.last_analyzed_at).toLocaleDateString()}
+            </p>
+          )}
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <AuthenticityBadge flag={repo.authenticity_flag} />
+        <div className="flex items-center gap-4 shrink-0">
           <ScoreBadge score={repo.engineering_score} />
-          <button
-            onClick={handleAnalyze}
-            disabled={analyzing}
-            title={repo.engineering_score !== null ? "Re-run analysis against the repo's current state" : 'Analyze this repo'}
-            className="text-xs border border-green-700 text-green-400 rounded px-2 py-1 hover:bg-green-500 hover:text-black transition-colors disabled:opacity-50"
-          >
-            {analyzing ? 'analyzing...' : repo.engineering_score !== null ? 're-analyze' : 'analyze'}
-          </button>
-          {repo.engineering_score !== null && (
+          <div className="flex flex-col gap-1.5">
             <button
-              onClick={handleSummarize}
-              disabled={summarizing}
-              title="Generate a Gemini-powered narrative summary grounded in the computed score"
-              className="text-xs border border-purple-700 text-purple-400 rounded px-2 py-1 hover:bg-purple-500 hover:text-black transition-colors disabled:opacity-50"
+              onClick={handleAnalyze}
+              disabled={analyzing}
+              title={repo.engineering_score !== null ? "Re-run analysis against the repo's current state" : 'Analyze this repo'}
+              className="text-xs rounded-md border border-hairline text-ink-muted px-2.5 py-1 hover:border-accent hover:text-accent transition-colors disabled:opacity-50 whitespace-nowrap"
             >
-              {summarizing ? 'summarizing...' : 'AI summary'}
+              {analyzing ? 'Analyzing…' : repo.engineering_score !== null ? 'Re-analyze' : 'Analyze'}
             </button>
-          )}
+            {repo.engineering_score !== null && (
+              <button
+                onClick={handleSummarize}
+                disabled={summarizing}
+                title="Generate an AI narrative summary, grounded in the computed score and checked for contradictions"
+                className="text-xs rounded-md border border-ai/40 text-ai px-2.5 py-1 hover:bg-ai/10 transition-colors disabled:opacity-50 whitespace-nowrap"
+              >
+                {summarizing ? 'Summarizing…' : 'AI summary'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {repo.last_analyzed_at && (
-        <p className="text-[10px] text-zinc-700 mt-1">
-          last analyzed {new Date(repo.last_analyzed_at).toLocaleString()}
-        </p>
-      )}
-
-      {summaryError && (
-        <p className="text-xs text-red-400 mt-2">&gt; {summaryError}</p>
-      )}
+      {summaryError && <p className="text-xs text-bad px-4 pb-3 -mt-2">{summaryError}</p>}
 
       {aiSummary && (
-        <div className="mt-3 border border-purple-900 rounded p-3 bg-zinc-900">
-          <p className="text-[10px] text-purple-500 mb-2">AI summary — grounded in the computed score, not freeform</p>
-          <p className="text-xs text-zinc-300 leading-relaxed mb-2">{aiSummary.headline}</p>
+        <div className="mx-4 mb-4 rounded-md border border-ai/25 bg-ai/[0.04] p-4">
+          <p className="text-[11px] text-ai mb-2">AI summary — grounded in the computed score, not freeform</p>
+          <p className="text-sm text-ink leading-relaxed mb-3">{aiSummary.headline}</p>
 
           <div className="space-y-1">
             {(repo.score_breakdown ?? []).map((signal) => {
@@ -110,11 +109,11 @@ export default function RepoCard({ repo, onAnalyze }: RepoCardProps) {
               const disputed = warningsBySignal.has(signal.id);
               return (
                 <div key={signal.id} className="text-xs flex items-start gap-2">
-                  <span className={signal.passed ? 'text-green-400' : 'text-zinc-500'}>{signal.passed ? '✓' : '○'}</span>
-                  <span className="text-zinc-400 flex-1">
+                  <span className={signal.passed ? 'text-good' : 'text-ink-faint'}>{signal.passed ? '✓' : '○'}</span>
+                  <span className="text-ink-muted flex-1 leading-relaxed">
                     {note}
                     {disputed && (
-                      <span className="text-yellow-500 ml-1" title="This note's wording doesn't match the computed result for this signal">
+                      <span className="text-warn ml-1" title="This note's wording doesn't match the computed result for this signal">
                         ⚠
                       </span>
                     )}
@@ -124,51 +123,64 @@ export default function RepoCard({ repo, onAnalyze }: RepoCardProps) {
             })}
           </div>
 
-          <p className="text-xs text-zinc-400 italic mt-2">{aiSummary.closing}</p>
+          <p className="text-sm text-ink-muted italic mt-3">{aiSummary.closing}</p>
 
           {aiWarnings.length > 0 && (
-            <p className="text-[10px] text-yellow-500 mt-2 border-t border-purple-900 pt-2">
-              ⚠ {aiWarnings.length} note{aiWarnings.length > 1 ? 's' : ''} above may not match the actual result — flagged automatically, shown as-is rather than hidden.
+            <p className="text-[11px] text-warn mt-3 border-t border-ai/20 pt-2.5">
+              {aiWarnings.length} note{aiWarnings.length > 1 ? 's' : ''} above may not match the actual result — flagged automatically, shown as-is rather than hidden.
             </p>
           )}
         </div>
       )}
 
       {expanded && repo.score_breakdown && (
-        <div className="mt-4 border-t border-zinc-800 pt-4 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="border-t border-hairline px-4 py-4 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             {repo.score_breakdown.map((signal) => (
-              <div key={signal.id} className="text-xs flex justify-between border border-zinc-800 rounded px-2 py-1.5">
-                <span className={signal.passed ? 'text-green-400' : 'text-zinc-500'}>{signal.label}</span>
-                <span className="text-zinc-600">{signal.points}/{signal.maxPoints}</span>
+              <div key={signal.id} className="text-xs flex justify-between rounded-md px-2.5 py-1.5 bg-surface-raised/60">
+                <span className={signal.passed ? 'text-good' : 'text-ink-muted'}>{signal.label}</span>
+                <span className="font-mono text-ink-faint">{signal.points}/{signal.maxPoints}</span>
               </div>
             ))}
           </div>
 
           {repo.strengths && repo.strengths.length > 0 && (
             <div>
-              <p className="text-xs text-green-500 mb-1">Strengths</p>
-              <ul className="text-xs text-zinc-400 list-disc list-inside space-y-0.5">
-                {repo.strengths.map((s) => <li key={s}>{s}</li>)}
+              <p className="text-xs text-good mb-1.5">Strengths</p>
+              <ul className="text-sm text-ink-muted space-y-1">
+                {repo.strengths.map((s) => (
+                  <li key={s} className="flex gap-2">
+                    <span className="text-good/60">—</span>
+                    {s}
+                  </li>
+                ))}
               </ul>
             </div>
           )}
 
           {repo.weaknesses && repo.weaknesses.length > 0 && (
             <div>
-              <p className="text-xs text-yellow-500 mb-1">To improve</p>
-              <ul className="text-xs text-zinc-400 list-disc list-inside space-y-0.5">
-                {repo.weaknesses.map((w) => <li key={w}>{w}</li>)}
+              <p className="text-xs text-warn mb-1.5">To improve</p>
+              <ul className="text-sm text-ink-muted space-y-1">
+                {repo.weaknesses.map((w) => (
+                  <li key={w} className="flex gap-2">
+                    <span className="text-warn/60">—</span>
+                    {w}
+                  </li>
+                ))}
               </ul>
             </div>
           )}
 
           {repo.authenticity_flag === 'possible_tutorial_clone' && repo.authenticity_evidence && (
             <div>
-              <p className="text-xs text-yellow-500 mb-1">Authenticity check</p>
-              <ul className="text-xs text-zinc-400 list-disc list-inside space-y-0.5">
+              <p className="text-xs text-warn mb-1.5">Authenticity check</p>
+              <ul className="text-sm text-ink-muted space-y-1">
                 {repo.authenticity_evidence.filter((e) => e.triggered).map((e) => (
-                  <li key={e.id}>{e.detail}</li>
+                  <li key={e.id} className="flex gap-2">
+                    <span className="text-warn/60">—</span>
+                    {e.detail}
+                  </li>
                 ))}
               </ul>
             </div>

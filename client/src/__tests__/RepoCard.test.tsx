@@ -54,33 +54,33 @@ describe('RepoCard', () => {
   it('shows "not analyzed" and an analyze button for a repo with no score', () => {
     render(<RepoCard repo={unanalyzedRepo} onAnalyze={vi.fn()} />);
     expect(screen.getByText('not analyzed')).toBeInTheDocument();
-    expect(screen.getByText('analyze')).toBeInTheDocument();
+    expect(screen.getByText('Analyze')).toBeInTheDocument();
   });
 
   it('shows the score badge and relabels the button to re-analyze once scored', () => {
     render(<RepoCard repo={analyzedRepo} onAnalyze={vi.fn()} />);
-    expect(screen.getByText('78/100')).toBeInTheDocument();
-    expect(screen.queryByText('analyze')).not.toBeInTheDocument();
-    expect(screen.getByText('re-analyze')).toBeInTheDocument();
+    expect(screen.getByText('78')).toBeInTheDocument();
+    expect(screen.queryByText('Analyze')).not.toBeInTheDocument();
+    expect(screen.getByText('Re-analyze')).toBeInTheDocument();
   });
 
   it('shows a last-analyzed timestamp once the repo has been scored', () => {
     const repoWithTimestamp = { ...analyzedRepo, last_analyzed_at: new Date().toISOString() };
     render(<RepoCard repo={repoWithTimestamp} onAnalyze={vi.fn()} />);
-    expect(screen.getByText(/last analyzed/)).toBeInTheDocument();
+    expect(screen.getByText(/last analyzed/i)).toBeInTheDocument();
   });
 
   it('calling analyze again from an already-scored repo still calls onAnalyze', () => {
     const onAnalyze = vi.fn().mockResolvedValue(undefined);
     render(<RepoCard repo={analyzedRepo} onAnalyze={onAnalyze} />);
-    fireEvent.click(screen.getByText('re-analyze'));
+    fireEvent.click(screen.getByText('Re-analyze'));
     expect(onAnalyze).toHaveBeenCalledWith('r2');
   });
 
   it('calls onAnalyze with the repo id when the analyze button is clicked', async () => {
     const onAnalyze = vi.fn().mockResolvedValue(undefined);
     render(<RepoCard repo={unanalyzedRepo} onAnalyze={onAnalyze} />);
-    fireEvent.click(screen.getByText('analyze'));
+    fireEvent.click(screen.getByText('Analyze'));
     expect(onAnalyze).toHaveBeenCalledWith('r1');
   });
 

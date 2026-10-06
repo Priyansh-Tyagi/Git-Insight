@@ -70,57 +70,92 @@ export default function Dashboard() {
   }
 
   const languages = aggregateLanguages(repos);
+  const analyzedCount = repos.filter((r) => r.engineering_score !== null).length;
+  const avgScore =
+    analyzedCount > 0
+      ? Math.round(repos.reduce((sum, r) => sum + (r.engineering_score ?? 0), 0) / analyzedCount)
+      : null;
 
   return (
-    <div className="min-h-screen bg-black text-green-400 font-mono p-8">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-3">
-          {(profile?.avatarUrl || user?.avatarUrl) && (
-            <img src={profile?.avatarUrl ?? user?.avatarUrl ?? ''} alt="avatar" className="w-10 h-10 rounded-full border border-green-500" />
-          )}
-          <div>
-            <p>{profile?.name || user?.username}</p>
-            <p className="text-xs text-zinc-600">@{profile?.login ?? user?.username}</p>
+    <div className="min-h-screen bg-canvas">
+      <header className="sticky top-0 z-10 border-b border-hairline bg-canvas/90 backdrop-blur-sm">
+        <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-accent" />
+            <span className="text-sm text-ink-muted tracking-tight">GitInsight</span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {(profile?.avatarUrl || user?.avatarUrl) && (
+              <img
+                src={profile?.avatarUrl ?? user?.avatarUrl ?? ''}
+                alt=""
+                className="w-7 h-7 rounded-full border border-hairline"
+              />
+            )}
+            <div className="hidden sm:block leading-none">
+              <p className="text-sm text-ink">{profile?.name || user?.username}</p>
+              <p className="text-[11px] text-ink-faint">@{profile?.login ?? user?.username}</p>
+            </div>
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="text-xs rounded-md border border-hairline text-ink-muted px-3 py-1.5 hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
+            >
+              {syncing ? 'Syncing…' : 'Sync'}
+            </button>
+            <button
+              onClick={logout}
+              className="text-xs rounded-md px-3 py-1.5 text-ink-faint hover:text-bad transition-colors"
+            >
+              Log out
+            </button>
           </div>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="border border-green-700 rounded px-3 py-1 text-sm hover:bg-green-500 hover:text-black transition-colors disabled:opacity-50"
-          >
-            {syncing ? 'syncing...' : 'sync'}
-          </button>
-          <button onClick={logout} className="border border-zinc-700 text-zinc-400 rounded px-3 py-1 text-sm hover:border-red-500 hover:text-red-400 transition-colors">
-            logout
-          </button>
-        </div>
-      </div>
+      </header>
 
-      {loading && <p className="text-zinc-500">&gt; loading profile...</p>}
-      {error && <p className="text-red-400 mb-4">&gt; {error}</p>}
+      <main className="max-w-5xl mx-auto px-6 py-8">
+        {loading && <p className="text-sm text-ink-muted">Loading profile…</p>}
+        {error && <p className="text-sm text-bad mb-4">{error}</p>}
 
-      {!loading && !error && (
-        <>
-          <div className="border border-zinc-800 rounded-md p-4 mb-6">
-            <p className="text-xs text-zinc-600 mb-2">$ language breakdown ({repos.length} repos)</p>
-            <LanguageBreakdown languages={languages} />
-          </div>
+        {!loading && !error && (
+          <>
+            <div className="flex items-baseline gap-6 mb-8">
+              <h1 className="text-2xl font-semibold text-ink">Overview</h1>
+              {avgScore !== null && (
+                <p className="text-sm text-ink-muted">
+                  <span className="font-mono text-accent font-medium">{avgScore}</span> average score across{' '}
+                  <span className="font-mono text-ink">{analyzedCount}</span> analyzed repo{analyzedCount === 1 ? '' : 's'}
+                </p>
+              )}
+            </div>
 
-          <div className="border border-zinc-800 rounded-md p-4 mb-6">
-            <p className="text-xs text-zinc-600 mb-2">$ skills</p>
-            <SkillRadar skills={skills} categories={categories} />
-          </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <section className="rounded-lg border border-hairline p-5">
+                <p className="text-xs text-ink-muted mb-3">Language breakdown · {repos.length} repos</p>
+                <LanguageBreakdown languages={languages} />
+              </section>
 
-          <p className="text-xs text-zinc-600 mb-2">$ repositories</p>
-          <div className="space-y-3">
-            {repos.length === 0 && <p className="text-zinc-500 text-sm">No repos found — sync your profile first.</p>}
-            {repos.map((repo) => (
-              <RepoCard key={repo.id} repo={repo} onAnalyze={handleAnalyze} />
-            ))}
-          </div>
-        </>
-      )}
+              <section className="rounded-lg border border-hairline p-5">
+                <p className="text-xs text-ink-muted mb-3">Inferred skills</p>
+                <SkillRadar skills={skills} categories={categories} />
+              </section>
+            </div>
+
+            <p className="text-xs text-ink-muted mb-3">Repositories</p>
+            <div className="space-y-2">
+              {repos.length === 0 && (
+                <p className="text-sm text-ink-faint rounded-lg border border-dashed border-hairline p-6 text-center">
+                  No repos found — sync your profile to get started.
+                </p>
+              )}
+              {repos.map((repo) => (
+                <RepoCard key={repo.id} repo={repo} onAnalyze={handleAnalyze} />
+              ))}
+            </div>
+          </>
+        )}
+      </main>
     </div>
   );
 }

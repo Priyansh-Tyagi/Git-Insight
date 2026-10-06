@@ -4,10 +4,21 @@ interface ScoreBadgeProps {
 
 export default function ScoreBadge({ score }: ScoreBadgeProps) {
   if (score === null) {
-    return <span className="text-xs px-2 py-1 border border-zinc-700 text-zinc-500 rounded">not analyzed</span>;
+    return (
+      <div className="text-right">
+        <span className="font-mono text-xl text-ink-faint">—</span>
+        <p className="text-[10px] text-ink-faint">not analyzed</p>
+      </div>
+    );
   }
 
-  const color = score >= 70 ? 'border-green-500 text-green-400' : score >= 40 ? 'border-yellow-500 text-yellow-400' : 'border-red-500 text-red-400';
+  const color = score >= 70 ? 'text-good' : score >= 40 ? 'text-warn' : 'text-bad';
 
-  return <span className={`text-xs px-2 py-1 border rounded font-bold ${color}`}>{score}/100</span>;
+  return (
+    <div className="text-right leading-none">
+      <span className={`font-mono text-xl font-semibold ${color}`}>{score}</span>
+      <span className="font-mono text-xs text-ink-faint">/100</span>
+      <p className="text-[10px] text-ink-faint mt-0.5">score</p>
+    </div>
+  );
 }

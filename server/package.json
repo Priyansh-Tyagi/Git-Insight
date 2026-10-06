@@ -14,7 +14,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
+    "@google/genai": "^2.26.0",
     "@octokit/graphql": "^7.1.0",
     "axios": "^1.7.2",
     "cookie-parser": "^1.4.6",

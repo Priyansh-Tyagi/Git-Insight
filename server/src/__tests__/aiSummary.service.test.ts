@@ -27,15 +27,21 @@ const BREAKDOWN_TESTS_PASS_DOCKER_FAIL = [
   { id: 'license', label: 'LICENSE', points: 0, maxPoints: 8, passed: false, detail: 'No license file' },
 ];
 
-function structuredJson(overrides: Partial<{ headline: string; signalNotes: { signalId: string; note: string }[]; closing: string }> = {}) {
+function structuredJson(
+  overrides: Partial<{ headline: string; signalNotes: { signalId: string; status: 'pass' | 'fail'; note: string }[]; closing: string }> = {}
+) {
   return JSON.stringify({
     headline: overrides.headline ?? 'Nice work — you scored 72/100!',
+    // status values match BREAKDOWN_TESTS_PASS_DOCKER_FAIL's real truth
+    // (readme/tests/ci pass, docker/license fail) — these are CONSISTENT
+    // fixtures by default; individual tests override status to simulate
+    // the model echoing the wrong one.
     signalNotes: overrides.signalNotes ?? [
-      { signalId: 'readme', note: 'Your README is thorough and easy to follow.' },
-      { signalId: 'tests', note: 'Great test coverage across the codebase.' },
-      { signalId: 'ci', note: 'Nice, you have a CI pipeline set up.' },
-      { signalId: 'docker', note: 'No Docker support was found — consider adding a Dockerfile.' },
-      { signalId: 'license', note: 'There is no license file yet — worth adding one.' },
+      { signalId: 'readme', status: 'pass', note: 'Your README is thorough and easy to follow.' },
+      { signalId: 'tests', status: 'pass', note: 'Great test coverage across the codebase.' },
+      { signalId: 'ci', status: 'pass', note: 'Nice, you have a CI pipeline set up.' },
+      { signalId: 'docker', status: 'fail', note: 'No Docker support was found — consider adding a Dockerfile.' },
+      { signalId: 'license', status: 'fail', note: 'There is no license file yet — worth adding one.' },
     ],
     closing: overrides.closing ?? 'Keep up the great work!',
   });
@@ -114,17 +120,17 @@ describe('aiSummary.service', () => {
     expect(callArgs[1]?.generationConfig?.responseMimeType).toBe('application/json');
   });
 
-  it('deterministically flags a contradiction when a note disagrees with its OWN signal status', async () => {
-    // docker FAILED, but this note's wording claims it's present — no topic
-    // guessing involved, signalId already tells us which signal this is.
+  it('deterministically flags a contradiction when the echoed status disagrees with the OWN signal', async () => {
+    // docker FAILED, but the model echoed status "pass" for it — this is
+    // now a direct enum mismatch, not something inferred from wording.
     mockedGemini.mockResolvedValue(
       structuredJson({
         signalNotes: [
-          { signalId: 'readme', note: 'Your README is thorough.' },
-          { signalId: 'tests', note: 'Great test coverage.' },
-          { signalId: 'ci', note: 'CI pipeline is set up nicely.' },
-          { signalId: 'docker', note: 'Docker support is properly configured here.' }, // contradiction
-          { signalId: 'license', note: 'No license file was found yet.' },
+          { signalId: 'readme', status: 'pass', note: 'Your README is thorough.' },
+          { signalId: 'tests', status: 'pass', note: 'Great test coverage.' },
+          { signalId: 'ci', status: 'pass', note: 'CI pipeline is set up nicely.' },
+          { signalId: 'docker', status: 'pass', note: 'Docker support is properly configured here.' }, // contradiction — docker actually FAILED
+          { signalId: 'license', status: 'fail', note: 'No license file was found yet.' },
         ],
       })
     );
