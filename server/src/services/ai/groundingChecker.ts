@@ -38,7 +38,7 @@ const SIGNAL_MENTION_PATTERNS: Record<string, RegExp> = {
   dependencies: /\block\s?file\b|\bpackage-lock\b|\breproducible install/i,
 };
 
-const NEGATION_PATTERN = /\b(no|not|n't|lacks?|lacking|missing|without|absent|doesn't have|does not have|none)\b/i;
+const NEGATION_PATTERN = /\b(no|not|n't|lacks?|lacking|missing|without|absent|absence|doesn't have|does not have|none)\b/i;
 
 /**
  * Hedged "it exists but isn't good enough" phrasing implies the signal is

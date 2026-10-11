@@ -293,13 +293,14 @@ async function main() {
   const allGroundedContradictions = ok.flatMap((r) =>
     r.groundedGrounding.claims.filter((c) => c.contradicted).map((c) => ({ repo: r.fullName, ...c }))
   );
+  report += `> **Manual review is required before citing any A/B percentage.** The A/B checker is a heuristic with a documented false-positive history. Read each row against the real repo and mark it genuine (e.g. a naive summary of octocat/Spoon-Knife praising "crystal-clear documentation" that does not exist), checker-artifact (the sentence actually agrees with the rubric, or the signal word is used in a different sense), or borderline.\n\n`;
   report += `## Condition A — Full Contradiction Audit (${allNaiveContradictions.length} flagged across ${ok.length} repos)\n\n`;
   if (allNaiveContradictions.length === 0) {
     report += `None flagged.\n\n`;
   } else {
-    report += `| Repo | Signal | Sentence | Actual status |\n|---|---|---|---|\n`;
+    report += `| Repo | Signal | Sentence | Actual status | Manual review (genuine / checker-artifact / borderline) |\n|---|---|---|---|---|\n`;
     for (const c of allNaiveContradictions) {
-      report += `| ${c.repo} | ${c.signalId} | "${c.sentence}" | ${c.actualPassed ? 'PASSED' : 'FAILED'} |\n`;
+      report += `| ${c.repo} | ${c.signalId} | "${c.sentence}" | ${c.actualPassed ? 'PASSED' : 'FAILED'} |  |\n`;
     }
     report += `\n`;
   }
@@ -308,9 +309,9 @@ async function main() {
   if (allGroundedContradictions.length === 0) {
     report += `None flagged.\n\n`;
   } else {
-    report += `| Repo | Signal | Sentence | Actual status |\n|---|---|---|---|\n`;
+    report += `| Repo | Signal | Sentence | Actual status | Manual review (genuine / checker-artifact / borderline) |\n|---|---|---|---|---|\n`;
     for (const c of allGroundedContradictions) {
-      report += `| ${c.repo} | ${c.signalId} | "${c.sentence}" | ${c.actualPassed ? 'PASSED' : 'FAILED'} |\n`;
+      report += `| ${c.repo} | ${c.signalId} | "${c.sentence}" | ${c.actualPassed ? 'PASSED' : 'FAILED'} |  |\n`;
     }
     report += `\n`;
   }

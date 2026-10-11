@@ -261,3 +261,11 @@ describe('checkStructuredSummary', () => {
     expect(result.contradictionCount).toBe(0); // status says fail, actual is fail — consistent, regardless of what the words say
   });
 });
+
+describe('checkGrounding — noun-form negation', () => {
+  it('treats "absence of" as negation, same as "absent"', () => {
+    const breakdown = [signal('docs', false)];
+    const result = checkGrounding('Its main weakness is the complete absence of documentation.', breakdown);
+    expect(result.contradictionCount).toBe(0);
+  });
+});

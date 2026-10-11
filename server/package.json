@@ -6,6 +6,7 @@
     "setup": "node scripts/setupEnv.js",
     "evaluate": "tsx scripts/evaluateRubric.ts",
     "experiment": "tsx scripts/runHallucinationExperiment.ts",
+    "verify-dataset": "tsx scripts/verifyDataset.ts",
     "dev": "tsx watch src/server.ts",
     "build": "tsc -b",
     "start": "node dist/server.js",
