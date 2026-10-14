@@ -6,6 +6,8 @@ import { aggregateLanguages } from '../lib/languageStats';
 import LanguageBreakdown from '../components/LanguageBreakdown';
 import RepoCard from '../components/RepoCard';
 import SkillRadar from '../components/SkillRadar';
+import ColdStartBanner from '../components/ColdStartBanner';
+import { fetchColdStart, ColdStartAssessment } from '../api/coldStart.api';
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
@@ -13,6 +15,7 @@ export default function Dashboard() {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [categories, setCategories] = useState<CategoryScore[]>([]);
+  const [coldStart, setColdStart] = useState<ColdStartAssessment | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,11 +23,18 @@ export default function Dashboard() {
   const loadData = useCallback(async () => {
     setError(null);
     try {
-      const [profileData, repoData, skillData] = await Promise.all([fetchProfile(), fetchRepos(), fetchSkills()]);
+      // Cold-start is advisory: if it fails, the rest of the dashboard should still load.
+      const [profileData, repoData, skillData, coldStartData] = await Promise.all([
+        fetchProfile(),
+        fetchRepos(),
+        fetchSkills(),
+        fetchColdStart().catch(() => null),
+      ]);
       setProfile(profileData.profile);
       setRepos(repoData);
       setSkills(skillData.skills);
       setCategories(skillData.categories);
+      setColdStart(coldStartData);
     } catch {
       setError('Could not load profile data. Try syncing again.');
     } finally {
@@ -67,6 +77,8 @@ export default function Dashboard() {
     const skillData = await fetchSkills();
     setSkills(skillData.skills);
     setCategories(skillData.categories);
+    // Analyzing a repo can move the profile out of cold-start.
+    setColdStart(await fetchColdStart().catch(() => null));
   }
 
   const languages = aggregateLanguages(repos);
@@ -130,6 +142,8 @@ export default function Dashboard() {
               )}
             </div>
 
+            <ColdStartBanner assessment={coldStart} />
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               <section className="rounded-lg border border-hairline p-5">
                 <p className="text-xs text-ink-muted mb-3">Language breakdown · {repos.length} repos</p>
@@ -137,7 +151,7 @@ export default function Dashboard() {
               </section>
 
               <section className="rounded-lg border border-hairline p-5">
-                <p className="text-xs text-ink-muted mb-3">Inferred skills</p>
+                <p className="text-xs text-ink-muted mb-3">Inferred skills{coldStart?.coldStart ? ' · provisional' : ''}</p>
                 <SkillRadar skills={skills} categories={categories} />
               </section>
             </div>

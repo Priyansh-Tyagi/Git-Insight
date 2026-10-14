@@ -12,6 +12,12 @@ import {
   oauthStateCookieOptions,
 } from '../utils/cookies';
 
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
+}
+
 // GET /api/auth/github — kick off the OAuth flow
 export function redirectToGithub(req: Request, res: Response) {
   const state = crypto.randomBytes(16).toString('hex');
@@ -21,7 +27,7 @@ export function redirectToGithub(req: Request, res: Response) {
   const params = new URLSearchParams({
     client_id: env.githubClientId,
     redirect_uri: env.githubCallbackUrl,
-    scope: 'read:user repo', // 'repo' needed later for private-repo analysis; read-only in practice via our own scopes
+    scope: env.githubOAuthScope, // see GITHUB_OAUTH_SCOPE in env.ts — 'repo' is broader than a read-only analyzer needs
     state,
   });
 
@@ -31,13 +37,20 @@ export function redirectToGithub(req: Request, res: Response) {
 // GET /api/auth/github/callback
 export async function handleGithubCallback(req: Request, res: Response, next: NextFunction) {
   try {
-    const { code, state } = req.query as { code?: string; state?: string };
+    const { code, state } = req.query;
     const expectedState = req.cookies?.[OAUTH_STATE_COOKIE];
 
     // Always clear the state cookie — it's single-use regardless of outcome.
     res.clearCookie(OAUTH_STATE_COOKIE);
 
-    if (!code || !state || !expectedState || state !== expectedState) {
+    // Query values can be arrays/objects (?code[]=x) — only plain strings are acceptable.
+    if (
+      typeof code !== 'string' ||
+      typeof state !== 'string' ||
+      typeof expectedState !== 'string' ||
+      !code ||
+      !safeEqual(state, expectedState)
+    ) {
       return res.status(400).json({
         success: false,
         error: { code: 'OAUTH_STATE_MISMATCH', message: 'Invalid or missing OAuth state' },

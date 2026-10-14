@@ -49,5 +49,6 @@ export const TOY_REPOS: DatasetRepo[] = [
   { fullName: 'mdn/django-locallibrary-tutorial', note: 'MDN tutorial output', status: 'candidate' },
   { fullName: 'mdn/todo-react', note: 'MDN tutorial output', status: 'candidate' },
   { fullName: 'digitalocean/sample-nodejs', note: 'Official DO sample', status: 'candidate' },
-  { fullName: 'microsoft/TypeScript-Node-Starter', note: 'Official starter template', status: 'candidate' },
+  // microsoft/TypeScript-Node-Starter returned HTTP 404 on 2026-10-11; replaced by the user with this repo (passed verify-dataset).
+  { fullName: 'nicksp/typescript-node-starter', note: 'TypeScript Node starter template (user-supplied replacement)', status: 'verified' },
 ];

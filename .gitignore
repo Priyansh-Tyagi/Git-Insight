@@ -1,17 +1,19 @@
-# Environment variables
+# secrets — never commit
 .env
 .env.*
 !.env.example
 
-# Node
+# dependencies / build output
 node_modules/
-
-# Build output
 dist/
-build/
+*.tsbuildinfo
+coverage/
 
-# Logs
-*.log
+# generated experiment output (regenerate with npm run evaluate / experiment)
+server/scripts/evaluation/results/
 
-# OS files
+# OS / editor
 .DS_Store
+Thumbs.db
+.vscode/
+.idea/
