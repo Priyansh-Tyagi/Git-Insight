@@ -1,5 +1,7 @@
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer } from 'recharts';
 import { Skill, CategoryScore, Trend } from '../api/skills.api';
+import { useTheme } from '../context/ThemeContext';
+import { chartColors } from '../lib/chartColors';
 
 const TREND_STYLE: Record<Trend, { label: string; className: string }> = {
   growing: { label: '↑ growing', className: 'text-good' },
@@ -13,6 +15,8 @@ interface SkillRadarProps {
 }
 
 export default function SkillRadar({ skills, categories }: SkillRadarProps) {
+  const { resolved } = useTheme();
+  const colors = chartColors(resolved);
   if (skills.length === 0) {
     return <p className="text-sm text-ink-muted">No skills inferred yet — analyze a few repos first.</p>;
   }
@@ -24,16 +28,16 @@ export default function SkillRadar({ skills, categories }: SkillRadarProps) {
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart data={chartData} outerRadius="62%" margin={{ top: 16, right: 36, bottom: 16, left: 36 }}>
-            <PolarGrid stroke="#27272B" />
+            <PolarGrid stroke={colors.grid} />
             {/* fontSize kept small deliberately — category labels ("DevOps", "Backend")
                 need to fit within the outerRadius+margin budget above without clipping,
                 confirmed against the two longest labels in this product's taxonomy. */}
-            <PolarAngleAxis dataKey="category" tick={{ fill: '#8C8C94', fontSize: 10, fontFamily: 'Inter' }} />
+            <PolarAngleAxis dataKey="category" tick={{ fill: colors.tick, fontSize: 10, fontFamily: 'Inter' }} />
             {/* Tick NUMBERS intentionally hidden (tick={false}) — the shape plus the
                 exact scores already listed alongside each skill made the floating
                 0/50/100 labels redundant clutter rather than added information. */}
             <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-            <Radar dataKey="score" stroke="#D9A441" fill="#D9A441" fillOpacity={0.2} />
+            <Radar dataKey="score" stroke={colors.accent} fill={colors.accent} fillOpacity={0.2} />
           </RadarChart>
         </ResponsiveContainer>
       </div>

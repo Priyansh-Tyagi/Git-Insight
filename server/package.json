@@ -43,7 +43,7 @@
   },
   "overrides": {
     "node-pg-migrate": {
-      "glob": "11.1.0"
+      "glob": "13.0.6"
     }
   },
   "engines": {

@@ -14,7 +14,7 @@
 - **Hung upstream calls:** 20 s default timeout on all outbound HTTP (GitHub, Gemini REST).
 - **Dependencies:** server 0 known vulnerabilities; client 0 in production deps. Upgraded express, qs, body-parser,
   proxy-addr, react-router-dom 6 -> 7 (open-redirect advisory), vitest 2 -> 4 (critical tinypool RCE advisory),
-  vite 5 -> 7 (esbuild dev-server advisory); patched `glob` via override for `node-pg-migrate`.
+  vite 5 -> 7 (esbuild dev-server advisory); `glob` overridden to 13.x for `node-pg-migrate` (it only calls glob with `--use-glob`, which we do not use; the override clears the audit finding and the deprecation warning).
 - **Repo hygiene:** added `.gitignore` (the project had none, so `.env` could have been committed).
 
 ## Already sound (verified by reading the code)

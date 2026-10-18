@@ -3,7 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GitInsight AI</title>
+    <title>GitInsight AI — what your repositories say about you</title>
+    <meta name="description" content="A deterministic engineering score, skill inference and fact-checked AI summaries, built from your real GitHub history." />
+    <!-- Apply the saved/system theme before first paint so there is no light/dark flash. -->
+    <script>
+      (function () {
+        try {
+          var m = localStorage.getItem('gi_theme');
+          var dark = m === 'dark' || (m !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

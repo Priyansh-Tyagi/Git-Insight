@@ -1,16 +1,54 @@
-import { useEffect, useState, useCallback } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { fetchProfile, fetchRepos, triggerSync, analyzeRepo, Profile, Repo } from '../api/profile.api';
 import { fetchSkills, Skill, CategoryScore } from '../api/skills.api';
+import { fetchColdStart, ColdStartAssessment } from '../api/coldStart.api';
 import { aggregateLanguages } from '../lib/languageStats';
+import { countByFilter, filterRepos, sortRepos, RepoFilter, RepoSort } from '../lib/repoFilters';
+import { useAuth } from '../context/AuthContext';
+import AppShell from '../components/layout/AppShell';
 import LanguageBreakdown from '../components/LanguageBreakdown';
 import RepoCard from '../components/RepoCard';
 import SkillRadar from '../components/SkillRadar';
 import ColdStartBanner from '../components/ColdStartBanner';
-import { fetchColdStart, ColdStartAssessment } from '../api/coldStart.api';
+import { Card, CardBody, CardHeader } from '../components/ui/Card';
+import StatCard from '../components/ui/StatCard';
+import Skeleton from '../components/ui/Skeleton';
+import Button from '../components/ui/Button';
+import { CompassIcon, FolderIcon, GaugeIcon, SearchIcon, TrendIcon } from '../components/ui/icons';
+
+const FILTERS: { id: RepoFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'analyzed', label: 'Analyzed' },
+  { id: 'unanalyzed', label: 'Not analyzed' },
+  { id: 'flagged', label: 'Flagged' },
+];
+
+const DEPTH_HINT: Record<ColdStartAssessment['depth'], string> = {
+  sufficient: 'full profile',
+  thin: 'provisional profile',
+  insufficient: 'not enough yet',
+};
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-label="Loading profile">
+      <Skeleton className="h-10 w-72" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-28" />
+        ))}
+      </div>
+      <div className="grid lg:grid-cols-3 gap-4">
+        <Skeleton className="h-64" />
+        <Skeleton className="h-64 lg:col-span-2" />
+      </div>
+      <Skeleton className="h-40" />
+    </div>
+  );
+}
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [repos, setRepos] = useState<Repo[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -19,6 +57,10 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [filter, setFilter] = useState<RepoFilter>('all');
+  const [sort, setSort] = useState<RepoSort>('score');
+  const [query, setQuery] = useState('');
 
   const loadData = useCallback(async () => {
     setError(null);
@@ -69,6 +111,7 @@ export default function Dashboard() {
               weaknesses: result.weaknesses,
               authenticity_flag: result.authenticityFlag,
               authenticity_evidence: result.authenticityEvidence,
+              last_analyzed_at: new Date().toISOString(),
             }
           : r
       )
@@ -81,95 +124,161 @@ export default function Dashboard() {
     setColdStart(await fetchColdStart().catch(() => null));
   }
 
-  const languages = aggregateLanguages(repos);
+  const languages = useMemo(() => aggregateLanguages(repos), [repos]);
   const analyzedCount = repos.filter((r) => r.engineering_score !== null).length;
   const avgScore =
-    analyzedCount > 0
-      ? Math.round(repos.reduce((sum, r) => sum + (r.engineering_score ?? 0), 0) / analyzedCount)
-      : null;
+    analyzedCount > 0 ? Math.round(repos.reduce((sum, r) => sum + (r.engineering_score ?? 0), 0) / analyzedCount) : null;
+  const counts = useMemo(() => countByFilter(repos), [repos]);
+  const visibleRepos = useMemo(() => sortRepos(filterRepos(repos, filter, query), sort), [repos, filter, query, sort]);
+  const topSkill = skills[0];
+
+  const displayName = profile?.name || profile?.login || user?.username || '';
+  const firstName = displayName.split(' ')[0];
 
   return (
-    <div className="min-h-screen bg-canvas">
-      <header className="sticky top-0 z-10 border-b border-hairline bg-canvas/90 backdrop-blur-sm">
-        <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-accent" />
-            <span className="text-sm text-ink-muted tracking-tight">GitInsight</span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {(profile?.avatarUrl || user?.avatarUrl) && (
-              <img
-                src={profile?.avatarUrl ?? user?.avatarUrl ?? ''}
-                alt=""
-                className="w-7 h-7 rounded-full border border-hairline"
-              />
-            )}
-            <div className="hidden sm:block leading-none">
-              <p className="text-sm text-ink">{profile?.name || user?.username}</p>
-              <p className="text-[11px] text-ink-faint">@{profile?.login ?? user?.username}</p>
+    <AppShell profile={profile} syncing={syncing} onSync={handleSync}>
+      {loading ? (
+        <DashboardSkeleton />
+      ) : error ? (
+        <Card className="p-8 text-center">
+          <p className="text-sm text-bad mb-4">{error}</p>
+          <Button variant="primary" onClick={loadData}>
+            Try again
+          </Button>
+        </Card>
+      ) : (
+        <div className="space-y-6 animate-fade-up">
+          <section id="overview" className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-semibold tracking-tight text-ink">Welcome back{firstName ? `, ${firstName}` : ''}</h2>
+              <p className="text-sm text-ink-muted mt-1">Here is what your repositories say about you.</p>
             </div>
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className="text-xs rounded-md border border-hairline text-ink-muted px-3 py-1.5 hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
-            >
-              {syncing ? 'Syncing…' : 'Sync'}
-            </button>
-            <button
-              onClick={logout}
-              className="text-xs rounded-md px-3 py-1.5 text-ink-faint hover:text-bad transition-colors"
-            >
-              Log out
-            </button>
-          </div>
-        </div>
-      </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-8">
-        {loading && <p className="text-sm text-ink-muted">Loading profile…</p>}
-        {error && <p className="text-sm text-bad mb-4">{error}</p>}
-
-        {!loading && !error && (
-          <>
-            <div className="flex items-baseline gap-6 mb-8">
-              <h1 className="text-2xl font-semibold text-ink">Overview</h1>
-              {avgScore !== null && (
-                <p className="text-sm text-ink-muted">
-                  <span className="font-mono text-accent font-medium">{avgScore}</span> average score across{' '}
-                  <span className="font-mono text-ink">{analyzedCount}</span> analyzed repo{analyzedCount === 1 ? '' : 's'}
-                </p>
-              )}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatCard
+                label="Average score"
+                value={avgScore ?? '—'}
+                hint={analyzedCount > 0 ? `across ${analyzedCount} analyzed repo${analyzedCount === 1 ? '' : 's'}` : 'analyze a repo to start'}
+                icon={<GaugeIcon className="w-4 h-4" />}
+              />
+              <StatCard
+                label="Repositories"
+                value={repos.length}
+                hint={`${analyzedCount} analyzed · ${repos.length - analyzedCount} pending`}
+                icon={<FolderIcon className="w-4 h-4" />}
+              />
+              <StatCard
+                label="Evidence repos"
+                value={coldStart ? `${coldStart.evidenceRepoCount}/${coldStart.minEvidenceRepos}` : '—'}
+                hint={coldStart ? DEPTH_HINT[coldStart.depth] : 'unavailable'}
+                icon={<CompassIcon className="w-4 h-4" />}
+              />
+              <StatCard
+                label="Top skill"
+                value={topSkill ? topSkill.skill : '—'}
+                hint={topSkill ? `${topSkill.strengthScore}/100 · ${topSkill.trend}` : 'no skills inferred yet'}
+                icon={<TrendIcon className="w-4 h-4" />}
+              />
             </div>
 
             <ColdStartBanner assessment={coldStart} />
+          </section>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <section className="rounded-lg border border-hairline p-5">
-                <p className="text-xs text-ink-muted mb-3">Language breakdown · {repos.length} repos</p>
+          <div className="grid lg:grid-cols-3 gap-4">
+            <Card>
+              <CardHeader title="Languages" subtitle={`${repos.length} repos`} />
+              <CardBody>
                 <LanguageBreakdown languages={languages} />
-              </section>
+              </CardBody>
+            </Card>
 
-              <section className="rounded-lg border border-hairline p-5">
-                <p className="text-xs text-ink-muted mb-3">Inferred skills{coldStart?.coldStart ? ' · provisional' : ''}</p>
+            <Card id="skills" className="lg:col-span-2">
+              <CardHeader title={`Inferred skills${coldStart?.coldStart ? ' · provisional' : ''}`} subtitle="From language share, recency and repo count" />
+              <CardBody>
                 <SkillRadar skills={skills} categories={categories} />
-              </section>
-            </div>
+              </CardBody>
+            </Card>
+          </div>
 
-            <p className="text-xs text-ink-muted mb-3">Repositories</p>
-            <div className="space-y-2">
-              {repos.length === 0 && (
-                <p className="text-sm text-ink-faint rounded-lg border border-dashed border-hairline p-6 text-center">
-                  No repos found — sync your profile to get started.
-                </p>
-              )}
-              {repos.map((repo) => (
-                <RepoCard key={repo.id} repo={repo} onAnalyze={handleAnalyze} />
-              ))}
-            </div>
-          </>
-        )}
-      </main>
-    </div>
+          <Card id="repositories">
+            <CardHeader
+              title="Repositories"
+              subtitle={`Showing ${visibleRepos.length} of ${repos.length}`}
+            />
+            <CardBody className="space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center gap-3">
+                <label className="relative flex-1">
+                  <span className="sr-only">Search repositories</span>
+                  <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search by name or description"
+                    className="w-full rounded-lg border border-hairline bg-canvas pl-9 pr-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-accent"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-xs text-ink-muted">
+                  Sort
+                  <select
+                    value={sort}
+                    onChange={(e) => setSort(e.target.value as RepoSort)}
+                    className="rounded-lg border border-hairline bg-canvas px-2.5 py-2 text-sm text-ink"
+                  >
+                    <option value="score">Highest score</option>
+                    <option value="stars">Most stars</option>
+                    <option value="recent">Recently analyzed</option>
+                    <option value="name">Name (A–Z)</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Filter repositories">
+                {FILTERS.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    aria-pressed={filter === f.id}
+                    onClick={() => setFilter(f.id)}
+                    className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                      filter === f.id
+                        ? 'border-accent bg-accent/10 text-accent'
+                        : 'border-hairline text-ink-muted hover:text-ink hover:bg-surface-raised'
+                    }`}
+                  >
+                    {f.label} <span className="font-mono ml-1 opacity-70">{counts[f.id]}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="space-y-3">
+                {repos.length === 0 && (
+                  <p className="text-sm text-ink-faint rounded-xl border border-dashed border-hairline p-8 text-center">
+                    No repos found — sync your profile to get started.
+                  </p>
+                )}
+                {repos.length > 0 && visibleRepos.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-hairline p-8 text-center">
+                    <p className="text-sm text-ink-muted mb-3">No repositories match your filters.</p>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setFilter('all');
+                        setQuery('');
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  </div>
+                )}
+                {visibleRepos.map((repo) => (
+                  <RepoCard key={repo.id} repo={repo} onAnalyze={handleAnalyze} />
+                ))}
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+      )}
+    </AppShell>
   );
 }

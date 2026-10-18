@@ -1,41 +1,49 @@
 /** @type {import('tailwindcss').Config} */
+// Every colour is a CSS variable (RGB triplet) defined in src/index.css, one set for light and one
+// for dark. Component code only ever uses these semantic names, so a theme switch needs no
+// per-component work — and `bg-accent/10`-style opacity modifiers keep working.
+const token = (name) => `rgb(var(--c-${name}) / <alpha-value>)`;
+
 export default {
+  darkMode: 'class',
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
-        // Neutral base — a near-black with a faint warm tint, not pure #000.
-        canvas: '#0B0B0D',
-        surface: '#141417',
-        'surface-raised': '#1B1B1F',
-        hairline: '#27272B',
-        ink: '#EDEDEF',
-        'ink-muted': '#8C8C94',
-        'ink-faint': '#5C5C63',
-        // Single brand accent — warm amber-gold. Nods to Git's own orange
-        // identity without copying it, and doubles as a "grading/quality"
-        // color, which fits a product whose whole job is scoring repos.
-        accent: {
-          DEFAULT: '#D9A441',
-          dim: '#8A6B2E',
-          bright: '#F0BC5C',
-        },
-        // Reserved exclusively for AI-generated content — distinguishing
-        // AI-narrated text from deterministic, computed facts is the
-        // actual research thesis of this project, so this color earns a
-        // dedicated role rather than being decorative.
-        ai: {
-          DEFAULT: '#9C8CE0',
-          dim: '#6B5FA3',
-        },
-        // Semantic — functional, not decorative. Kept distinct from accent.
-        good: '#3DD68C',
-        warn: '#E0A935',
-        bad: '#EF6461',
+        canvas: token('canvas'),
+        surface: token('surface'),
+        'surface-raised': token('surface-raised'),
+        hairline: token('hairline'),
+        ink: token('ink'),
+        'ink-muted': token('ink-muted'),
+        'ink-faint': token('ink-faint'),
+        // Single brand accent — warm amber-gold (Git's orange identity, and a "grading" colour).
+        accent: { DEFAULT: token('accent'), dim: token('accent-dim'), bright: token('accent-bright') },
+        'on-accent': token('on-accent'),
+        // Reserved exclusively for AI-generated content: telling AI-narrated text apart from
+        // deterministic, computed facts is this project's research thesis.
+        ai: { DEFAULT: token('ai'), dim: token('ai-dim') },
+        good: token('good'),
+        warn: token('warn'),
+        bad: token('bad'),
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+      },
+      boxShadow: {
+        card: 'var(--shadow-card)',
+        pop: 'var(--shadow-pop)',
+      },
+      keyframes: {
+        'fade-up': { '0%': { opacity: '0', transform: 'translateY(8px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+        float: { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-8px)' } },
+        'spin-slow': { to: { transform: 'rotate(360deg)' } },
+      },
+      animation: {
+        'fade-up': 'fade-up 0.5s ease-out both',
+        float: 'float 6s ease-in-out infinite',
+        'spin-slow': 'spin-slow 90s linear infinite',
       },
     },
   },

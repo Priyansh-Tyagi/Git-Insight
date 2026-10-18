@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Repo, generateSummary, StructuredSummary } from '../api/profile.api';
 import ScoreBadge from './ScoreBadge';
 import AuthenticityBadge from './AuthenticityBadge';
+import Button from './ui/Button';
+import { SparkIcon } from './ui/icons';
 
 interface RepoCardProps {
   repo: Repo;
@@ -51,7 +53,7 @@ export default function RepoCard({ repo, onAnalyze }: RepoCardProps) {
   const noteBySignal = new Map(aiSummary?.signalNotes.map((n) => [n.signalId, n.note]) ?? []);
 
   return (
-    <div className="rounded-lg border border-hairline hover:border-ink-faint/40 transition-colors bg-surface/40">
+    <div className="rounded-xl border border-hairline bg-surface shadow-card hover:border-ink-faint/40 transition-colors">
       <div
         className="flex items-start justify-between gap-4 p-4 cursor-pointer"
         onClick={() => repo.score_breakdown && setExpanded((v) => !v)}
@@ -73,23 +75,25 @@ export default function RepoCard({ repo, onAnalyze }: RepoCardProps) {
         <div className="flex items-center gap-4 shrink-0">
           <ScoreBadge score={repo.engineering_score} />
           <div className="flex flex-col gap-1.5">
-            <button
+            <Button
+              size="sm"
               onClick={handleAnalyze}
               disabled={analyzing}
               title={repo.engineering_score !== null ? "Re-run analysis against the repo's current state" : 'Analyze this repo'}
-              className="text-xs rounded-md border border-hairline text-ink-muted px-2.5 py-1 hover:border-accent hover:text-accent transition-colors disabled:opacity-50 whitespace-nowrap"
             >
               {analyzing ? 'Analyzing…' : repo.engineering_score !== null ? 'Re-analyze' : 'Analyze'}
-            </button>
+            </Button>
             {repo.engineering_score !== null && (
-              <button
+              <Button
+                variant="ai"
+                size="sm"
                 onClick={handleSummarize}
                 disabled={summarizing}
+                icon={<SparkIcon className="w-3 h-3" />}
                 title="Generate an AI narrative summary, grounded in the computed score and checked for contradictions"
-                className="text-xs rounded-md border border-ai/40 text-ai px-2.5 py-1 hover:bg-ai/10 transition-colors disabled:opacity-50 whitespace-nowrap"
               >
                 {summarizing ? 'Summarizing…' : 'AI summary'}
-              </button>
+              </Button>
             )}
           </div>
         </div>
