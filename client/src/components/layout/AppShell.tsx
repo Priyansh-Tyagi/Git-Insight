@@ -1,12 +1,12 @@
 import { ReactNode, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { LINKS, linkFor } from '../../config/siteLinks';
 import Logo from '../ui/Logo';
 import Button from '../ui/Button';
 import ThemeToggle from '../ui/ThemeToggle';
 import {
-  CloseIcon, ExternalIcon, FolderIcon, GithubIcon, GridIcon, HomeIcon, LogoutIcon, MenuIcon, RefreshIcon, TrendIcon,
+  CloseIcon, CompassIcon, ExternalIcon, FolderIcon, GithubIcon, GridIcon, HomeIcon, LogoutIcon, MenuIcon, RefreshIcon, TrendIcon,
 } from '../ui/icons';
 
 export interface ShellProfile {
@@ -18,14 +18,22 @@ export interface ShellProfile {
 interface AppShellProps {
   profile: ShellProfile | null;
   syncing: boolean;
-  onSync: () => void;
+  /** Omit on pages with nothing to sync — the Sync button is then hidden. */
+  onSync?: () => void;
+  title?: string;
   children: ReactNode;
 }
 
-const NAV = [
+// In-page sections, only shown on the dashboard (anchors mean nothing on other pages).
+const SECTIONS = [
   { href: '#overview', label: 'Overview', icon: GridIcon },
   { href: '#skills', label: 'Skills', icon: TrendIcon },
   { href: '#repositories', label: 'Repositories', icon: FolderIcon },
+];
+
+const PAGES = [
+  { to: '/dashboard', label: 'Dashboard', icon: GridIcon },
+  { to: '/match', label: 'Job match', icon: CompassIcon },
 ];
 
 const navItemClass =
@@ -37,6 +45,7 @@ function SidebarContent({ profile, onNavigate }: { profile: ShellProfile | null;
   const handle = profile?.login ?? user?.username ?? '';
   const avatar = profile?.avatarUrl ?? user?.avatarUrl ?? '';
   const github = linkFor('github');
+  const { pathname } = useLocation();
 
   return (
     <div className="flex h-full flex-col">
@@ -46,12 +55,29 @@ function SidebarContent({ profile, onNavigate }: { profile: ShellProfile | null;
 
       <nav className="flex-1 px-3 py-2 space-y-1" aria-label="Dashboard sections">
         <p className="px-3 pb-1 pt-2 text-[11px] uppercase tracking-wider text-ink-faint">Workspace</p>
-        {NAV.map(({ href, label, icon: Icon }) => (
-          <a key={href} href={href} onClick={onNavigate} className={navItemClass}>
+        {PAGES.map(({ to, label, icon: Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            onClick={onNavigate}
+            className={({ isActive }) => `${navItemClass} ${isActive ? 'bg-surface-raised text-ink font-medium' : ''}`}
+          >
             <Icon className="w-[18px] h-[18px]" />
             {label}
-          </a>
+          </NavLink>
         ))}
+
+        {pathname === '/dashboard' && (
+          <>
+            <p className="px-3 pb-1 pt-5 text-[11px] uppercase tracking-wider text-ink-faint">On this page</p>
+            {SECTIONS.map(({ href, label, icon: Icon }) => (
+              <a key={href} href={href} onClick={onNavigate} className={navItemClass}>
+                <Icon className="w-[18px] h-[18px]" />
+                {label}
+              </a>
+            ))}
+          </>
+        )}
 
         <p className="px-3 pb-1 pt-5 text-[11px] uppercase tracking-wider text-ink-faint">Links</p>
         <Link to="/" onClick={onNavigate} className={navItemClass}>
@@ -89,7 +115,7 @@ function SidebarContent({ profile, onNavigate }: { profile: ShellProfile | null;
   );
 }
 
-export default function AppShell({ profile, syncing, onSync, children }: AppShellProps) {
+export default function AppShell({ profile, syncing, onSync, title = 'Dashboard', children }: AppShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Esc closes the mobile drawer; body scroll is locked while it is open.
@@ -141,19 +167,21 @@ export default function AppShell({ profile, syncing, onSync, children }: AppShel
                 <MenuIcon className="w-[18px] h-[18px]" />
               </button>
               <span className="lg:hidden"><Logo /></span>
-              <h1 className="hidden lg:block text-sm font-medium text-ink-muted">Dashboard</h1>
+              <h1 className="hidden lg:block text-sm font-medium text-ink-muted">{title}</h1>
             </div>
 
             <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={onSync}
-                disabled={syncing}
-                icon={<RefreshIcon className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />}
-              >
-                {syncing ? 'Syncing…' : 'Sync'}
-              </Button>
+              {onSync && (
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={onSync}
+                  disabled={syncing}
+                  icon={<RefreshIcon className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />}
+                >
+                  {syncing ? 'Syncing…' : 'Sync'}
+                </Button>
+              )}
               <ThemeToggle />
             </div>
           </div>

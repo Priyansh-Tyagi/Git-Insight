@@ -9,6 +9,7 @@ import analyzerRoutes from './routes/analyzer.routes';
 import skillsRoutes from './routes/skills.routes';
 import aiSummaryRoutes from './routes/aiSummary.routes';
 import coldStartRoutes from './routes/coldStart.routes';
+import jobMatchRoutes from './routes/jobMatch.routes';
 import { errorHandler } from './middlewares/errorHandler';
 import { apiLimiter, authLimiter, expensiveLimiter } from './middlewares/rateLimit';
 import { validateUuidParam } from './middlewares/validateUuidParam';
@@ -46,6 +47,7 @@ export function createApp() {
   app.use('/api', skillsRoutes); // exposes /api/skills
   app.use('/api', aiSummaryRoutes); // exposes /api/repos/:id/summarize
   app.use('/api', coldStartRoutes); // exposes /api/cold-start
+  app.use('/api', jobMatchRoutes); // exposes POST /api/match
 
   app.get('/api/health', (_req, res) => res.json({ success: true, data: 'ok' }));
 

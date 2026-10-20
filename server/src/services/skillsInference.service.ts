@@ -8,9 +8,7 @@ import { aggregateByCategory, CategoryScore } from './skills/aggregateByCategory
  * GitHub API calls happen here, so this is cheap enough to recompute on
  * every dashboard load rather than needing its own sync/TTL policy.
  */
-export async function computeAndPersistSkills(
-  userId: string
-): Promise<{ skills: SkillResult[]; categories: CategoryScore[] }> {
+export async function computeSkills(userId: string): Promise<{ skills: SkillResult[]; categories: CategoryScore[] }> {
   const repoRes = await pool.query(
     `SELECT id, language_stats, raw_metadata, score_breakdown FROM repositories WHERE user_id = $1`,
     [userId]
@@ -26,7 +24,13 @@ export async function computeAndPersistSkills(
   }));
 
   const skills = inferSkills(repoInputs);
-  const categories = aggregateByCategory(skills);
+  return { skills, categories: aggregateByCategory(skills) };
+}
+
+export async function computeAndPersistSkills(
+  userId: string
+): Promise<{ skills: SkillResult[]; categories: CategoryScore[] }> {
+  const { skills, categories } = await computeSkills(userId);
 
   const client = await pool.connect();
   try {

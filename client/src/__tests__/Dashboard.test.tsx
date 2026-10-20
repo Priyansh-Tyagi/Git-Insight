@@ -45,7 +45,7 @@ beforeEach(() => {
   });
 });
 
-const renderDashboard = () => render(<MemoryRouter><Dashboard /></MemoryRouter>);
+const renderDashboard = () => render(<MemoryRouter initialEntries={['/dashboard']}><Dashboard /></MemoryRouter>);
 
 describe('Dashboard', () => {
   it('greets by first name and shows computed stat cards', async () => {
@@ -108,7 +108,7 @@ describe('Dashboard', () => {
     renderDashboard();
     await screen.findByText('api-server');
     const nav = screen.getAllByRole('navigation', { name: /dashboard sections/i })[0];
-    for (const label of ['Overview', 'Skills', 'Repositories']) expect(within(nav).getByText(label)).toBeInTheDocument();
+    for (const label of ['Dashboard', 'Job match', 'Overview', 'Skills', 'Repositories']) expect(within(nav).getByText(label)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /switch to (dark|light) theme/i })).toBeInTheDocument();
   });
 });

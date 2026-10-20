@@ -32,3 +32,21 @@
 3. **No session revocation:** logout clears the cookie but a stolen JWT stays valid until its 7-day expiry.
 4. **Rate limits are in-memory, per process** (fine for one server; use a shared store if scaled out).
 5. Deploying: serve over HTTPS and set `NODE_ENV=production`.
+
+## Phase 10 (job match) — security notes
+- Pasted job-description / resume text is processed in memory only: never stored, never logged, never sent to an AI service.
+- Input is validated (strings only, 20 to 20,000 characters) and the matcher caps scanned lines at 2,000.
+- Skill patterns are built from a fixed, regex-escaped alias list (no user-supplied regex), and the "Go" neighbour check
+  only looks at a 40-character window, so hostile input cannot trigger catastrophic backtracking (covered by tests).
+- Endpoint requires login; it falls under the global API rate limit.
+
+## Resume upload — security notes
+- PDF / DOCX / TXT files are parsed **in the browser**; the file is never uploaded. Only the extracted text (editable by the
+  user before submitting) is sent to the API, where it is validated and not stored.
+- Limits: 5 MB per file, 30 PDF pages, magic-byte check (extension alone is not trusted), legacy `.doc` refused.
+- DOCX: only `word/document.xml` is inflated, and only if it would expand to at most 20 MB (zip-bomb guard); parsed with the
+  browser's XML parser (no external entities are ever fetched).
+- PDF: pdf.js 5.4 with `isEvalSupported: false` (the mitigation for the font-eval bug class, CVE-2024-4367).
+- `mammoth` was deliberately NOT used: its dependency chain (`argparse` -> `sprintf-js`) carries an advisory with no fixed version.
+- Google Docs links are intentionally not fetched server-side (SSRF risk, and private docs would need broad Drive OAuth scopes).
+  Use File -> Download -> PDF / .docx instead.

@@ -3,6 +3,7 @@ import { useAuth } from './context/AuthContext';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import JobMatch from './pages/JobMatch';
 import Skeleton from './components/ui/Skeleton';
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
@@ -29,6 +30,14 @@ export default function AppRouter() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/match"
+          element={
+            <ProtectedRoute>
+              <JobMatch />
             </ProtectedRoute>
           }
         />
