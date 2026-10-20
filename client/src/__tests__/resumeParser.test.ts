@@ -131,11 +131,13 @@ describe('extractResumeText', () => {
       await expect(extractResumeText(pdfFile(), 100)).rejects.toThrow(/scanned/i);
     });
     it('maps a password-protected PDF to a friendly error', async () => {
-      vi.mocked(pdfjs.getDocument).mockReturnValue({ promise: Promise.reject(Object.assign(new Error('x'), { name: 'PasswordException' })) } as never);
+      vi.mocked(pdfjs.getDocument).mockImplementation(
+        () => ({ promise: Promise.reject(Object.assign(new Error('x'), { name: 'PasswordException' })) }) as never
+      );
       await expect(extractResumeText(pdfFile(), 100)).rejects.toThrow(/password-protected/i);
     });
     it('maps any other parser failure to a generic read error', async () => {
-      vi.mocked(pdfjs.getDocument).mockReturnValue({ promise: Promise.reject(new Error('boom')) } as never);
+      vi.mocked(pdfjs.getDocument).mockImplementation(() => ({ promise: Promise.reject(new Error('boom')) }) as never);
       await expect(extractResumeText(pdfFile(), 100)).rejects.toThrow(/could not read this pdf/i);
     });
   });
