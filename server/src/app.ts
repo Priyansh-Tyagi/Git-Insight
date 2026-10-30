@@ -10,6 +10,7 @@ import skillsRoutes from './routes/skills.routes';
 import aiSummaryRoutes from './routes/aiSummary.routes';
 import coldStartRoutes from './routes/coldStart.routes';
 import jobMatchRoutes from './routes/jobMatch.routes';
+import frameworksRoutes from './routes/frameworks.routes';
 import { errorHandler } from './middlewares/errorHandler';
 import { apiLimiter, authLimiter, expensiveLimiter } from './middlewares/rateLimit';
 import { validateUuidParam } from './middlewares/validateUuidParam';
@@ -40,6 +41,7 @@ export function createApp() {
   app.post('/api/profile/sync', expensiveLimiter);
   app.post('/api/repos/:id/analyze', validateUuidParam('id'), expensiveLimiter);
   app.post('/api/repos/:id/summarize', validateUuidParam('id'), expensiveLimiter);
+  app.post('/api/repos/:id/frameworks', validateUuidParam('id'), expensiveLimiter);
 
   app.use('/api/auth', authRoutes);
   app.use('/api', profileRoutes); // exposes /api/profile, /api/profile/sync, /api/repos
@@ -48,6 +50,7 @@ export function createApp() {
   app.use('/api', aiSummaryRoutes); // exposes /api/repos/:id/summarize
   app.use('/api', coldStartRoutes); // exposes /api/cold-start
   app.use('/api', jobMatchRoutes); // exposes POST /api/match
+  app.use('/api', frameworksRoutes); // exposes POST /api/repos/:id/frameworks
 
   app.get('/api/health', (_req, res) => res.json({ success: true, data: 'ok' }));
 

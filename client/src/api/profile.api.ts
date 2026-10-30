@@ -18,8 +18,15 @@ export interface SignalResult {
   detail: string;
 }
 
+export interface DetectedFramework {
+  skill: string;
+  /** Short proof, e.g. "server/package.json: express". */
+  via: string[];
+}
+
 export interface Repo {
   id: string;
+  is_fork: boolean;
   name: string;
   full_name: string;
   description: string | null;
@@ -32,6 +39,8 @@ export interface Repo {
   last_analyzed_at: string | null;
   authenticity_flag: 'likely_original' | 'possible_tutorial_clone' | 'insufficient_data' | null;
   authenticity_evidence: { id: string; label: string; triggered: boolean; detail: string }[] | null;
+  /** null = not scanned yet; [] = scanned, nothing recognised. */
+  detected_frameworks: DetectedFramework[] | null;
 }
 
 export async function fetchProfile(): Promise<{ profile: Profile; repoCount: number }> {
@@ -55,6 +64,7 @@ export async function analyzeRepo(repoId: string): Promise<{
   weaknesses: string[];
   authenticityFlag: 'likely_original' | 'possible_tutorial_clone' | 'insufficient_data';
   authenticityEvidence: { id: string; label: string; triggered: boolean; detail: string }[];
+  detectedFrameworks: DetectedFramework[] | null;
 }> {
   const res = await api.post(`/api/repos/${repoId}/analyze`);
   return res.data.data;

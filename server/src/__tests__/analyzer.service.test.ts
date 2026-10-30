@@ -10,12 +10,19 @@ vi.mock('../services/authenticity/fetchCommitHistory', () => ({
   fetchCommitPatternInput: vi.fn(),
 }));
 
+vi.mock('../services/repoAnalysis/fetchManifests', () => ({
+  fetchManifestContents: vi.fn(),
+  fetchRepoFileList: vi.fn(),
+}));
+
 import { fetchRepoSignalInput } from '../services/repoAnalysis/fetchRepoTree';
 import { fetchCommitPatternInput } from '../services/authenticity/fetchCommitHistory';
+import { fetchManifestContents } from '../services/repoAnalysis/fetchManifests';
 import { analyzeRepo, RepoNotFoundError } from '../services/analyzer.service';
 
 const mockedFetch = fetchRepoSignalInput as unknown as ReturnType<typeof vi.fn>;
 const mockedCommitFetch = fetchCommitPatternInput as unknown as ReturnType<typeof vi.fn>;
+const mockedManifests = fetchManifestContents as unknown as ReturnType<typeof vi.fn>;
 
 describe('analyzer.service', () => {
   let userId: string;
@@ -29,6 +36,9 @@ describe('analyzer.service', () => {
       sizeKb: 300,
       weeklyCommitCounts: new Array(52).fill(1),
     });
+
+    mockedManifests.mockReset();
+    mockedManifests.mockResolvedValue({ contents: [], attempted: 0, failed: 0 });
 
     mockedCommitFetch.mockReset();
     mockedCommitFetch.mockResolvedValue({
@@ -127,5 +137,53 @@ describe('analyzer.service', () => {
     const rows = await pool.query(`SELECT * FROM repositories WHERE id = $1`, [repoId]);
     expect(rows.rows).toHaveLength(1); // still one row, just updated
     expect(rows.rows[0].engineering_score).toBe(second.totalScore);
+  });
+  describe('framework detection', () => {
+    const withManifests = (files: string[]) =>
+      mockedFetch.mockResolvedValue({ files, readmeLength: 500, sizeKb: 300, weeklyCommitCounts: new Array(52).fill(1) });
+    const manifest = (path: string, deps: Record<string, string>) => ({ path, content: JSON.stringify({ dependencies: deps }) });
+    const stored = async () => (await pool.query(`SELECT detected_frameworks FROM repositories WHERE id = $1`, [repoId])).rows[0].detected_frameworks;
+
+    it('detects frameworks from dependency files and persists them', async () => {
+      withManifests(['README.md', 'client/package.json', 'server/package.json']);
+      mockedManifests.mockResolvedValue({
+        contents: [manifest('client/package.json', { react: '^18' }), manifest('server/package.json', { express: '^4', mongoose: '^8' })],
+        attempted: 2,
+        failed: 0,
+      });
+
+      const result = await analyzeRepo(userId, repoId);
+      expect(result.detectedFrameworks!.map((f) => f.skill)).toEqual(['Express', 'MongoDB', 'Node.js', 'React']);
+      expect((await stored()).map((f: { skill: string }) => f.skill)).toEqual(['Express', 'MongoDB', 'Node.js', 'React']);
+    });
+
+    it('stores an empty array (scanned, nothing recognised) rather than NULL', async () => {
+      withManifests(['package.json']);
+      mockedManifests.mockResolvedValue({ contents: [manifest('package.json', { lodash: '4' })], attempted: 1, failed: 0 });
+
+      await analyzeRepo(userId, repoId);
+      expect(await stored()).toEqual([]);
+    });
+
+    it('keeps a previous good detection when a later manifest fetch fails', async () => {
+      withManifests(['package.json']);
+      mockedManifests.mockResolvedValue({ contents: [manifest('package.json', { react: '^18' })], attempted: 1, failed: 0 });
+      await analyzeRepo(userId, repoId);
+
+      mockedManifests.mockResolvedValue({ contents: [], attempted: 1, failed: 1 }); // GitHub hiccup
+      const second = await analyzeRepo(userId, repoId);
+
+      expect(second.detectedFrameworks).toBeNull();
+      expect((await stored()).map((f: { skill: string }) => f.skill)).toEqual(['React']); // not overwritten with "unknown"
+    });
+
+    it('never fails the analysis if framework detection throws', async () => {
+      withManifests(['package.json']);
+      mockedManifests.mockRejectedValue(new Error('boom'));
+
+      const result = await analyzeRepo(userId, repoId);
+      expect(result.totalScore).toBeGreaterThan(0);
+      expect(await stored()).toBeNull(); // never scanned -> still unknown
+    });
   });
 });

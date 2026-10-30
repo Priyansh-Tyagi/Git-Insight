@@ -5,7 +5,7 @@ import { filterRepos, sortRepos, countByFilter } from '../lib/repoFilters';
 const repo = (over: Partial<Repo>): Repo => ({
   id: 'x', name: 'x', full_name: 'u/x', description: null, stargazer_count: 0, language_stats: {},
   engineering_score: null, score_breakdown: null, strengths: null, weaknesses: null,
-  last_analyzed_at: null, authenticity_flag: null, authenticity_evidence: null, ...over,
+  last_analyzed_at: null, authenticity_flag: null, authenticity_evidence: null, is_fork: false, detected_frameworks: null, ...over,
 });
 
 const repos = [

@@ -1,4 +1,4 @@
-import { ClaimCheck, ClaimStatus, JobMatchResult, RequirementMatch, RequirementStatus } from '../../api/match.api';
+import { ClaimCheck, ClaimStatus, ComparisonRow, JobMatchResult, RequirementMatch, RequirementStatus } from '../../api/match.api';
 import { Card, CardBody, CardHeader } from '../ui/Card';
 import Badge from '../ui/Badge';
 import ScoreRing from '../ui/ScoreRing';
@@ -17,6 +17,41 @@ const CLAIM_BADGE: Record<ClaimStatus, { tone: 'good' | 'warn' | 'neutral'; labe
   unsupported: { tone: 'warn', label: 'No GitHub evidence' },
   unverifiable: { tone: 'neutral', label: 'Not verifiable' },
 };
+
+function ComparisonCard({ rows }: { rows: ComparisonRow[] }) {
+  const mark = (v: boolean) => (v ? '✓' : '—');
+  return (
+    <Card>
+      <CardHeader title="Job vs resume vs GitHub" subtitle="Only GitHub counts as proof — the posting and resume are claims" />
+      <CardBody>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-ink-faint">
+                <th className="py-1 pr-3 font-medium">Skill</th>
+                <th className="py-1 px-3 font-medium">Job asks</th>
+                <th className="py-1 px-3 font-medium">Resume claims</th>
+                <th className="py-1 pl-3 font-medium">GitHub shows</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.skill} className="border-t border-hairline">
+                  <td className="py-2 pr-3 text-ink">{r.skill}</td>
+                  <td className="py-2 px-3 font-mono text-ink-muted">{mark(r.inJob)}</td>
+                  <td className="py-2 px-3 font-mono text-ink-muted">{mark(r.inResume)}</td>
+                  <td className="py-2 pl-3">
+                    <Badge tone={CLAIM_BADGE[r.github].tone}>{CLAIM_BADGE[r.github].label}</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
 
 function RepoList({ repos }: { repos: RequirementMatch['evidenceRepos'] }) {
   if (repos.length === 0) return null;
@@ -38,31 +73,52 @@ function RepoList({ repos }: { repos: RequirementMatch['evidenceRepos'] }) {
 
 function RequirementRow({ m }: { m: RequirementMatch }) {
   const badge = STATUS_BADGE[m.status];
+  const hint =
+    m.method === 'dependencies' && m.status !== 'gap'
+      ? 'Found in the dependency files of your repositories'
+      : m.method === 'dependencies'
+        ? 'Not declared in any repository scanned so far'
+        : badge.hint;
   return (
     <li className="flex items-start justify-between gap-3 rounded-lg border border-hairline bg-canvas px-4 py-3">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-ink">{m.skill}</span>
           <Badge tone={m.importance === 'required' ? 'accent' : 'neutral'}>{m.importance}</Badge>
+          {m.origin === 'implied' && <Badge tone="neutral">implied</Badge>}
         </div>
+        {m.origin === 'implied' && (
+          <p className="text-xs text-ink-faint mt-1">
+            Not named in the posting — inferred from: {m.cues.join(', ')}. Not checked against GitHub or counted in the percentage.
+          </p>
+        )}
         {m.status === 'unverifiable' ? (
           <p className="text-xs text-ink-faint mt-1">
+            {m.needsScan && 'Can be checked once your repositories are scanned. '}
             {m.relatedEvidence.length > 0
               ? `Related evidence: ${m.relatedEvidence.map((r) => `${r.skill} ${r.strengthScore}/100`).join(', ')}`
-              : 'No related language evidence found'}
+              : m.needsScan
+                ? ''
+                : 'No related language evidence found'}
           </p>
         ) : (
           <>
-            {m.strengthScore !== null && (
+            {(m.strengthScore !== null || m.trend) && (
               <p className="text-xs text-ink-muted mt-1 font-mono">
-                {m.strengthScore}/100 · {m.trend}
+                {[m.strengthScore !== null ? `${m.strengthScore}/100` : null, m.trend].filter(Boolean).join(' · ')}
               </p>
             )}
             <RepoList repos={m.evidenceRepos} />
+            {m.method === 'dependencies' && m.via.length > 0 && (
+              <p className="text-[11px] text-ink-faint mt-1 font-mono truncate" title={m.via.join('\n')}>
+                {m.via[0]}
+                {m.via.length > 1 && ` +${m.via.length - 1} more`}
+              </p>
+            )}
           </>
         )}
       </div>
-      <span title={badge.hint} className="shrink-0">
+      <span title={hint} className="shrink-0">
         <Badge tone={badge.tone}>{badge.label}</Badge>
       </span>
     </li>
@@ -97,8 +153,15 @@ export default function MatchResults({ result }: { result: JobMatchResult }) {
                 <p className="text-xs text-ink-muted mt-0.5">
                   {counts.verifiable > 0
                     ? `${counts.matched} of ${counts.verifiable} verifiable skill${counts.verifiable === 1 ? '' : 's'} matched`
-                    : 'nothing here GitHub can verify'}
+                    : counts.needsScan > 0
+                      ? 'scan your repositories to check frameworks'
+                      : 'nothing here GitHub can verify'}
                 </p>
+                {counts.dependencyChecked > 0 && result.coverage.totalRepos > 0 && (
+                  <p className="text-[11px] text-ink-faint mt-0.5">
+                    Framework checks cover {result.coverage.scannedRepos} of {result.coverage.totalRepos} repositories
+                  </p>
+                )}
               </div>
             </div>
             <dl className="grid grid-cols-4 gap-4 text-center flex-1 min-w-[240px]">
@@ -137,6 +200,8 @@ export default function MatchResults({ result }: { result: JobMatchResult }) {
           </CardBody>
         </Card>
       )}
+
+      {result.comparison && result.comparison.length > 0 && <ComparisonCard rows={result.comparison} />}
 
       {result.resumeClaims && (
         <Card>

@@ -50,3 +50,14 @@
 - `mammoth` was deliberately NOT used: its dependency chain (`argparse` -> `sprintf-js`) carries an advisory with no fixed version.
 - Google Docs links are intentionally not fetched server-side (SSRF risk, and private docs would need broad Drive OAuth scopes).
   Use File -> Download -> PDF / .docx instead.
+
+## Framework scanning (dependency evidence) — security notes
+- Reads only dependency manifests (package.json, requirements.txt, pyproject.toml, pom.xml, build.gradle, composer.json,
+  Gemfile, go.mod, *.csproj) plus the file list: at most 8 files per repository, 256 KB each, 4 requests at a time.
+  No source code is read or stored. Manifests in vendored/build/fixture folders (node_modules, dist, vendor, ...) are skipped.
+- Stored per repository: skill names and short "file: package" strings only (`repositories.detected_frameworks`, jsonb).
+  Job match treats that jsonb as untrusted and ignores malformed entries.
+- Parsers are pure and use linear-time scanning (no backtracking-prone regexes on whole files); hostile inputs are covered by tests.
+- `POST /api/repos/:id/frameworks`: login required, UUID-validated, ownership-scoped query, and under the quota-spending
+  rate limiter. GitHub failures return a generic 502 (no upstream detail leaked).
+- A failed read is stored as "unknown" (NULL), never as "uses nothing" ([]), and a later failure never overwrites a good result.

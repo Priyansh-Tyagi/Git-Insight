@@ -18,7 +18,7 @@ export interface SkillResult {
   evidenceRepoIds: string[];
 }
 
-function daysSince(isoDate: string): number {
+export function daysSince(isoDate: string): number {
   return (Date.now() - new Date(isoDate).getTime()) / (1000 * 60 * 60 * 24);
 }
 
@@ -35,7 +35,7 @@ function repoCountScore(count: number): number {
   return Math.min(count / 5, 1) * 100; // capped at 5 repos for full marks — documented, not hidden
 }
 
-function classifyTrend(days: number): Trend {
+export function classifyTrend(days: number): Trend {
   if (days <= 60) return 'growing';
   if (days <= 180) return 'stable';
   return 'stale';

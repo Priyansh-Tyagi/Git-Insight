@@ -111,6 +111,7 @@ export default function Dashboard() {
               weaknesses: result.weaknesses,
               authenticity_flag: result.authenticityFlag,
               authenticity_evidence: result.authenticityEvidence,
+              detected_frameworks: result.detectedFrameworks ?? r.detected_frameworks,
               last_analyzed_at: new Date().toISOString(),
             }
           : r

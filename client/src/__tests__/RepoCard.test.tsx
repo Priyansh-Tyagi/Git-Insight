@@ -24,6 +24,8 @@ const unanalyzedRepo: Repo = {
   last_analyzed_at: null,
   authenticity_flag: null,
   authenticity_evidence: null,
+  is_fork: false,
+  detected_frameworks: null,
 };
 
 const analyzedRepo: Repo = {
@@ -90,6 +92,25 @@ describe('RepoCard', () => {
     expect(screen.getByText('README')).toBeInTheDocument();
     expect(screen.getByText('Has a substantive README.')).toBeInTheDocument();
     expect(screen.getByText('No CI pipeline detected.')).toBeInTheDocument();
+  });
+
+  it('shows the detected stack, with the proof on hover, once a repo is expanded', () => {
+    const repo: Repo = { ...analyzedRepo, detected_frameworks: [{ skill: 'React', via: ['package.json: react'] }, { skill: 'MongoDB', via: ['server/package.json: mongoose'] }] };
+    render(<RepoCard repo={repo} onAnalyze={vi.fn()} />);
+    expect(screen.queryByText('React')).not.toBeInTheDocument(); // collapsed
+    fireEvent.click(screen.getByText('demo-repo'));
+    expect(screen.getByText(/Detected stack/)).toBeInTheDocument();
+    expect(screen.getByText('React')).toHaveAttribute('title', 'package.json: react');
+    expect(screen.getByText('MongoDB')).toHaveAttribute('title', 'server/package.json: mongoose');
+  });
+
+  it('hides the detected-stack row when nothing was detected or the repo was never scanned', () => {
+    for (const detected of [null, []]) {
+      const { unmount } = render(<RepoCard repo={{ ...analyzedRepo, detected_frameworks: detected }} onAnalyze={vi.fn()} />);
+      fireEvent.click(screen.getByText('demo-repo'));
+      expect(screen.queryByText(/Detected stack/)).not.toBeInTheDocument();
+      unmount();
+    }
   });
 
   it('does not expand when clicked if there is no breakdown yet', () => {

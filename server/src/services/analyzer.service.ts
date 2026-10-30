@@ -5,6 +5,8 @@ import { computeEngineeringScore } from './repoAnalysis/scoreRepo';
 import { generateStrengthsAndWeaknesses } from './repoAnalysis/strengthsWeaknesses';
 import { fetchCommitPatternInput } from './authenticity/fetchCommitHistory';
 import { detectAuthenticity } from './authenticity/detectAuthenticity';
+import { detectForRepo } from './repoAnalysis/detectForRepo';
+import { FrameworkEvidence } from './repoAnalysis/detectFrameworks';
 
 export class RepoNotFoundError extends Error {
   constructor() {
@@ -49,11 +51,21 @@ export async function analyzeRepo(userId: string, repoId: string) {
   );
   const { flag: authenticityFlag, evidence: authenticityEvidence } = detectAuthenticity(commitPatternInput);
 
+  // Framework evidence is a bonus: if it can't be read, the rest of the analysis still stands, and a previous
+  // good detection is kept (COALESCE below) rather than overwritten with "unknown".
+  let detectedFrameworks: FrameworkEvidence[] | null = null;
+  try {
+    detectedFrameworks = await detectForRepo(accessToken, owner, name, signalInput.files);
+  } catch {
+    detectedFrameworks = null;
+  }
+
   await pool.query(
     `UPDATE repositories
      SET engineering_score = $1, score_breakdown = $2, strengths = $3, weaknesses = $4, last_analyzed_at = now(),
-         commit_pattern_json = $5, authenticity_flag = $6, authenticity_evidence = $7
-     WHERE id = $8`,
+         commit_pattern_json = $5, authenticity_flag = $6, authenticity_evidence = $7,
+         detected_frameworks = COALESCE($8::jsonb, detected_frameworks)
+     WHERE id = $9`,
     [
       totalScore,
       JSON.stringify(breakdown),
@@ -62,9 +74,10 @@ export async function analyzeRepo(userId: string, repoId: string) {
       JSON.stringify(commitPatternInput),
       authenticityFlag,
       JSON.stringify(authenticityEvidence),
+      detectedFrameworks === null ? null : JSON.stringify(detectedFrameworks),
       repoId,
     ]
   );
 
-  return { totalScore, breakdown, strengths, weaknesses, authenticityFlag, authenticityEvidence };
+  return { totalScore, breakdown, strengths, weaknesses, authenticityFlag, authenticityEvidence, detectedFrameworks };
 }

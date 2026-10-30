@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Repo, generateSummary, StructuredSummary } from '../api/profile.api';
 import ScoreBadge from './ScoreBadge';
 import AuthenticityBadge from './AuthenticityBadge';
+import Badge from './ui/Badge';
 import Button from './ui/Button';
 import { SparkIcon } from './ui/icons';
 
@@ -147,6 +148,21 @@ export default function RepoCard({ repo, onAnalyze }: RepoCardProps) {
               </div>
             ))}
           </div>
+
+          {repo.detected_frameworks && repo.detected_frameworks.length > 0 && (
+            <div>
+              <p className="text-xs text-ink-muted mb-1.5">
+                Detected stack <span className="text-ink-faint">· from dependency files</span>
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {repo.detected_frameworks.map((f) => (
+                  <Badge key={f.skill} title={f.via.join('\n')}>
+                    {f.skill}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
 
           {repo.strengths && repo.strengths.length > 0 && (
             <div>

@@ -67,7 +67,7 @@ export const CATALOG: CatalogEntry[] = [
   u('SQL', 'Data', ['sql', 'mysql', 'postgresql', 'postgres', 'sqlite']),
   u('MongoDB', 'Data', ['mongodb', 'mongo']),
   u('Redis', 'Data', ['redis']),
-  u('Machine Learning', 'Data', ['machine learning', 'deep learning'], ['Python']),
+  u('Machine Learning', 'Data', ['machine learning', 'machine-learning', 'deep learning', 'ai/ml', 'ml/ai', 'aiml', 'ai & ml', 'ai and ml', 'ml models', 'ml engineer'], ['Python']),
   u('TensorFlow', 'Data', ['tensorflow'], ['Python']),
   u('PyTorch', 'Data', ['pytorch'], ['Python']),
   u('AWS', 'DevOps', ['aws', 'amazon web services']),
@@ -76,6 +76,21 @@ export const CATALOG: CatalogEntry[] = [
   u('Kubernetes', 'DevOps', ['kubernetes', 'k8s'], ['Docker']),
   u('Terraform', 'DevOps', ['terraform']),
   u('Linux', 'DevOps', ['linux'], ['Shell Scripting']),
+  // ---- tier 2: recognised, but GitHub cannot prove them. Listed separately, never counted as gaps. ----
+  // DevOps
+  u('Monitoring & Observability', 'DevOps', ['monitoring', 'observability', 'prometheus', 'grafana', 'datadog', 'splunk', 'elk stack'], ['Linux']),
+  u('Infrastructure as Code', 'DevOps', ['infrastructure as code', 'iac', 'cloudformation', 'pulumi', 'ansible'], ['Shell Scripting']),
+  u('Microservices', 'DevOps', ['microservices', 'microservice', 'service mesh'], ['Docker']),
+  u('Distributed Systems', 'DevOps', ['distributed systems', 'distributed computing'], []),
+  u('Nginx', 'DevOps', ['nginx', 'load balancing', 'load balancer'], ['Linux']),
+  u('Site Reliability', 'DevOps', ['sre', 'site reliability', 'incident response', 'on-call'], []),
+  // Data
+  u('Data Analysis', 'Data', ['data analysis', 'data analytics', 'analytics'], ['Python']),
+  u('Data Engineering', 'Data', ['data engineering', 'etl', 'data pipeline', 'data pipelines', 'airflow', 'spark', 'kafka', 'data warehouse'], ['Python']),
+  u('Data Visualization', 'Data', ['data visualization', 'data visualisation', 'tableau', 'power bi'], []),
+  u('Statistics', 'Data', ['statistics', 'statistical modeling', 'statistical analysis'], ['Python']),
+  u('NLP', 'Data', ['nlp', 'natural language processing'], ['Python']),
+  u('Computer Vision', 'Data', ['computer vision', 'opencv', 'image processing'], ['Python']),
   u('Testing', 'Practice', ['unit testing', 'integration testing', 'automated testing', 'automated tests', 'test automation', 'jest', 'pytest', 'junit', 'tdd']),
 ];
 

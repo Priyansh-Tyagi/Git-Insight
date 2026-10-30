@@ -17,6 +17,8 @@ function makeRepo(languageStats: Record<string, number>): Repo {
     last_analyzed_at: null,
     authenticity_flag: null,
     authenticity_evidence: null,
+    is_fork: false,
+    detected_frameworks: null,
   };
 }
 

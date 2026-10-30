@@ -3,7 +3,7 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { CATALOG, inferableSkillNames } from '../services/jobMatch/skillCatalog';
 import { extractSkills } from '../services/jobMatch/extractSkills';
-import { matchJob, evidenceQuality, RepoRef, UserSkillEvidence } from '../services/jobMatch/matchJob';
+import { matchJob, evidenceQuality, RepoRef, UserSkillEvidence, FrameworkSkillEvidence } from '../services/jobMatch/matchJob';
 import { validateMatchInput, MAX_TEXT_CHARS } from '../services/jobMatch/validateInput';
 
 const names = (text: string) => extractSkills(text).map((s) => s.skill);
@@ -230,9 +230,12 @@ describe('matchJob', () => {
   });
 
   it('returns a null percentage when nothing in the posting is verifiable, or nothing is recognised', () => {
-    const onlyCloud = matchJob({ requirements: req('AWS and Kubernetes'), resumeSkills: null, userSkills: [] });
-    expect(onlyCloud.matchPercent).toBeNull();
-    expect(onlyCloud.notes.join(' ')).toMatch(/none of the skills in this posting can be verified/i);
+    const noWayToCheck = matchJob({ requirements: req('Linux and Kubernetes'), resumeSkills: null, userSkills: [] });
+    expect(noWayToCheck.matchPercent).toBeNull();
+    expect(noWayToCheck.notes.join(' ')).toMatch(/none of the skills in this posting can be verified/i);
+    const needsScan = matchJob({ requirements: req('AWS and Kubernetes'), resumeSkills: null, userSkills: [] });
+    expect(needsScan.matchPercent).toBeNull();
+    expect(needsScan.notes.join(' ')).toMatch(/scan your repositories/i);
     const none = matchJob({ requirements: req('be nice'), resumeSkills: null, userSkills: [] });
     expect(none.matchPercent).toBeNull();
     expect(none.notes.join(' ')).toMatch(/no recognizable skills/i);
@@ -249,11 +252,11 @@ describe('matchJob', () => {
       ev('Docker', 80, 'growing', [repo('a', { isFork: true })]),
       ev('Python', 80, 'stale', [repo('b')]),
     ];
-    const r = matchJob({ requirements: req('Rust Docker Python AWS'), resumeSkills: null, userSkills: user });
+    const r = matchJob({ requirements: req('Rust Docker Python Linux'), resumeSkills: null, userSkills: user });
     expect(r.nextSteps[0]).toMatch(/original project that uses Rust/);
     expect(r.nextSteps[1]).toMatch(/Docker evidence is only in forks/);
     expect(r.nextSteps[2]).toMatch(/Python activity is stale/);
-    expect(r.nextSteps[3]).toMatch(/can't verify AWS/);
+    expect(r.nextSteps[3]).toMatch(/can't verify Linux/);
     const many = req('Rust Go Ruby PHP Swift Kotlin Dart C# C++ Java');
     expect(matchJob({ requirements: many, resumeSkills: null, userSkills: [] }).nextSteps.length).toBeLessThanOrEqual(6);
   });
@@ -265,6 +268,129 @@ describe('matchJob', () => {
     const first = JSON.stringify(matchJob({ requirements, resumeSkills: null, userSkills: user }));
     for (let i = 0; i < 20; i++) expect(JSON.stringify(matchJob({ requirements, resumeSkills: null, userSkills: user }))).toBe(first);
     expect(JSON.stringify({ user, requirements })).toBe(snapshot);
+  });
+});
+
+describe('extractSkills — which skills can be checked from dependency files', () => {
+  it('flags framework skills as frameworkVerifiable, and nothing else', () => {
+    const by = Object.fromEntries(extractSkills('React, Python, Linux, Terraform, MongoDB, Kubernetes').map((s) => [s.skill, s]));
+    expect(by.React).toMatchObject({ verifiable: false, frameworkVerifiable: true });
+    expect(by.MongoDB).toMatchObject({ verifiable: false, frameworkVerifiable: true });
+    expect(by.Terraform).toMatchObject({ verifiable: false, frameworkVerifiable: true });
+    expect(by.Python).toMatchObject({ verifiable: true, frameworkVerifiable: false });
+    expect(by.Linux).toMatchObject({ verifiable: false, frameworkVerifiable: false });
+    expect(by.Kubernetes).toMatchObject({ verifiable: false, frameworkVerifiable: false });
+  });
+});
+
+const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+const fwRepo = (name: string, over: Partial<RepoRef & { pushedAt: string | null }> = {}) => ({
+  id: name, name, isFork: false, isClone: false, pushedAt: daysAgo(10), ...over,
+});
+const fw = (skill: string, repos: ReturnType<typeof fwRepo>[], via: string[] = [`${repos[0]?.name}/package.json: x`]): FrameworkSkillEvidence => ({ skill, repos, via });
+const COVER = { scannedRepos: 2, totalRepos: 5 };
+const run = (jd: string, frameworkEvidence: FrameworkSkillEvidence[] | null, coverage = COVER, userSkills: UserSkillEvidence[] = []) =>
+  matchJob({ requirements: extractSkills(jd), resumeSkills: null, userSkills, frameworkEvidence, coverage });
+
+describe('matchJob — dependency evidence', () => {
+  it('asks for a scan when no repository has been scanned yet, instead of calling it a gap', () => {
+    const r = run('React and Express.js', null, { scannedRepos: 0, totalRepos: 5 });
+    expect(r.requirements.every((m) => m.status === 'unverifiable' && m.needsScan && !m.verifiable)).toBe(true);
+    expect(r.matchPercent).toBeNull();
+    expect(r.counts).toMatchObject({ needsScan: 2, verifiable: 0, gap: 0 });
+    expect(r.nextSteps[0]).toMatch(/Scan your repositories \(0 of 5 done\).*Express, React/);
+    expect(r.notes.join(' ')).toMatch(/scan your repositories/i);
+  });
+
+  it('tells a user with no synced repositories to sync first, not "0 of 0"', () => {
+    const r = run('React', null, { scannedRepos: 0, totalRepos: 0 });
+    expect(r.nextSteps[0]).toMatch(/^Sync your GitHub repositories and scan them/);
+    expect(r.nextSteps.join(' ')).not.toMatch(/0 of 0/);
+  });
+
+  it('counts a framework used in two original repos as a strong match', () => {
+    const r = run('React', [fw('React', [fwRepo('shop'), fwRepo('blog')], ['shop/package.json: react'])]);
+    const m = r.requirements[0];
+    expect(m).toMatchObject({ status: 'matched', quality: 'strong', method: 'dependencies', verifiable: true, needsScan: false, frameworkVerifiable: true, credit: 1 });
+    expect(m.via).toEqual(['shop/package.json: react']);
+    expect(m.evidenceRepos.map((x) => x.name)).toEqual(['shop', 'blog']);
+    expect(m.evidenceRepos[0]).not.toHaveProperty('pushedAt'); // internal field is not leaked
+    expect(r.matchPercent).toBe(100);
+    expect(r.counts.dependencyChecked).toBe(1);
+  });
+
+  it('gives partial credit for one repo (moderate) and for forks only (weak)', () => {
+    expect(run('React', [fw('React', [fwRepo('a')])]).matchPercent).toBe(60);
+    const weak = run('React', [fw('React', [fwRepo('a', { isFork: true })])]);
+    expect(weak.matchPercent).toBe(25);
+    expect(weak.requirements[0].status).toBe('weak');
+    expect(run('React', [fw('React', [fwRepo('a', { isClone: true }), fwRepo('b', { isFork: true })])]).requirements[0].quality).toBe('weak');
+  });
+
+  it('reports a gap — in scanned repos only — when other repos were scanned but none use it', () => {
+    const r = run('MongoDB', [fw('React', [fwRepo('a')])]);
+    expect(r.requirements[0]).toMatchObject({ status: 'gap', method: 'dependencies', credit: 0 });
+    expect(r.matchPercent).toBe(0);
+    expect(r.nextSteps[0]).toMatch(/none of your scanned repositories declare it/);
+  });
+
+  it('applies the stale discount using the newest original repo', () => {
+    expect(run('React', [fw('React', [fwRepo('a', { pushedAt: daysAgo(500) }), fwRepo('b', { pushedAt: daysAgo(400) })])]).matchPercent).toBe(70);
+    // one recent original repo makes the skill current
+    expect(run('React', [fw('React', [fwRepo('a', { pushedAt: daysAgo(500) }), fwRepo('b', { pushedAt: daysAgo(5) })])]).matchPercent).toBe(100);
+    expect(run('React', [fw('React', [fwRepo('a', { pushedAt: null }), fwRepo('b', { pushedAt: null })])]).requirements[0].trend).toBeNull();
+  });
+
+  it('mixes language and dependency evidence in one percentage, required counting double', () => {
+    const user = [ev('Python', 90, 'growing', [repo('api')])];
+    const jd = ['Requirements', '- Python', 'Nice to have', '- React'].join('\n');
+    // Python 1.0 (weight 2) + React moderate 0.6 (weight 1) = 2.6 / 3
+    expect(run(jd, [fw('React', [fwRepo('a')])], COVER, user).matchPercent).toBe(87);
+  });
+
+  it('leaves skills that no dependency can prove as unverifiable, scan or not', () => {
+    for (const evidence of [null, [fw('React', [fwRepo('a')])]]) {
+      const m = run('Linux', evidence).requirements[0];
+      expect(m).toMatchObject({ status: 'unverifiable', needsScan: false, frameworkVerifiable: false });
+    }
+  });
+
+  it('explains coverage, and only suggests scanning the rest when some repos are unscanned', () => {
+    const partial = run('React', [fw('React', [fwRepo('a')])], { scannedRepos: 2, totalRepos: 5 });
+    expect(partial.notes.join(' ')).toMatch(/2 of 5 repositories scanned.*not how well you know it.*Scan the rest/);
+    const full = run('React', [fw('React', [fwRepo('a')])], { scannedRepos: 5, totalRepos: 5 });
+    expect(full.notes.join(' ')).not.toMatch(/Scan the rest/);
+    expect(full.coverage).toEqual({ scannedRepos: 5, totalRepos: 5 });
+  });
+
+  it('checks resume claims through dependencies too', () => {
+    const r = matchJob({
+      requirements: extractSkills('React'),
+      resumeSkills: extractSkills('React, MongoDB, Linux'),
+      userSkills: [],
+      frameworkEvidence: [fw('React', [fwRepo('a')])],
+      coverage: COVER,
+    });
+    const by = Object.fromEntries(r.resumeClaims!.checks.map((c) => [c.skill, [c.status, c.method]]));
+    expect(by).toEqual({ Linux: ['unverifiable', null], MongoDB: ['unsupported', 'dependencies'], React: ['supported', 'dependencies'] });
+    const noScan = matchJob({ requirements: [], resumeSkills: extractSkills('React'), userSkills: [], frameworkEvidence: null });
+    expect(noScan.resumeClaims!.checks[0]).toMatchObject({ status: 'unverifiable', method: null });
+  });
+
+  it('turns the MERN posting into a real percentage once repos are scanned', () => {
+    const jd = 'Core Foundation: experience focused on the MERN stack.\nBackend: Node.js and MongoDB.';
+    const evidence = ['MongoDB', 'Express', 'React', 'Node.js'].map((s) => fw(s, [fwRepo('mern-app'), fwRepo('chat-app')]));
+    const r = run(jd, evidence, { scannedRepos: 3, totalRepos: 3 });
+    expect(r.matchPercent).toBe(100);
+    expect(r.counts).toMatchObject({ requirements: 4, verifiable: 4, matched: 4, needsScan: 0 });
+  });
+
+  it('is deterministic and does not mutate its inputs', () => {
+    const evidence = [fw('React', [fwRepo('a'), fwRepo('b')])];
+    const snapshot = JSON.stringify(evidence);
+    const first = JSON.stringify(run('React and MongoDB', evidence));
+    for (let i = 0; i < 20; i++) expect(JSON.stringify(run('React and MongoDB', evidence))).toBe(first);
+    expect(JSON.stringify(evidence)).toBe(snapshot);
   });
 });
 
@@ -299,6 +425,17 @@ describe('validateMatchInput', () => {
     expect(validateMatchInput({ jobDescription: 'x'.repeat(MAX_TEXT_CHARS + 1) }).ok).toBe(false);
     expect(validateMatchInput({ jobDescription: jd, resume: 'x'.repeat(MAX_TEXT_CHARS + 1) }).ok).toBe(false);
     expect(validateMatchInput({ jobDescription: jd, resume: { a: 1 } }).ok).toBe(false);
+  });
+});
+
+describe('POST /api/repos/:id/frameworks', () => {
+  it('requires authentication', async () => {
+    const res = await request(createApp()).post('/api/repos/123e4567-e89b-12d3-a456-426614174000/frameworks');
+    expect(res.status).toBe(401);
+  });
+  it('returns 404, not a database error, for a malformed id', async () => {
+    const res = await request(createApp()).post('/api/repos/not-a-uuid/frameworks');
+    expect(res.status).toBe(404);
   });
 });
 
